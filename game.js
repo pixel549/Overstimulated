@@ -2,6 +2,7 @@
 const TILE_SIZE = 20;
 const GAME_WIDTH = 1000;
 const GAME_HEIGHT = 700;
+const DAD_HITBOX_SIZE = 26;
 const MAX_OVERSTIMULATION = 100;
 // Baseline stress model constants
 // How quickly stress rises while moving (points per second)
@@ -56,6 +57,58 @@ const ctx = canvas.getContext('2d');
 canvas.width = GAME_WIDTH;
 canvas.height = GAME_HEIGHT;
 const touchButtons = document.querySelectorAll('[data-touch]');
+const playtestElements = {
+    panel: document.getElementById('playtest-panel'),
+    status: document.getElementById('playtest-status'),
+    summary: document.getElementById('playtest-summary'),
+    details: document.getElementById('playtest-details'),
+    events: document.getElementById('playtest-events'),
+    toggle: document.getElementById('playtest-toggle'),
+    speed: document.getElementById('playtest-speed'),
+    export: document.getElementById('playtest-export'),
+    reset: document.getElementById('playtest-reset')
+};
+const PLAYTEST_SPEEDS = [1, 2, 4];
+const PLAYTEST_LOG_LIMIT = 8;
+const BOT_CONTROLLED_KEYS = new Set(['w', 'a', 's', 'd', 'arrowup', 'arrowdown', 'arrowleft', 'arrowright', ' ', 'e', 'shift', 'q', 'r']);
+const PLAYTEST_QUERY = new URLSearchParams(window.location.search);
+const AUTOSTART_PLAYTEST = PLAYTEST_QUERY.get('autoplay') === '1';
+const AUTOSTART_SPEED = Number(PLAYTEST_QUERY.get('speed') || '1');
+
+let playtestBot = {
+    active: false,
+    timeScale: 1,
+    route: null,
+    routeIndex: 0,
+    objective: null,
+    objectiveStartedAt: 0,
+    modalContinueDelay: 0,
+    sampleTimer: 0,
+    uiTimer: 0,
+    stuckCounter: 0,
+    lastPosition: null,
+    recoveryTimer: 0,
+    recoveryTarget: null,
+    lastMoveTarget: null,
+    lastRoutePreview: [],
+    lastTargetDoorName: null,
+    blockedObjectives: {},
+    doorActionCooldown: 0,
+    exitIntent: {
+        toilet: false,
+        relax: false
+    },
+    telemetry: {
+        sessionStartedAt: new Date().toISOString(),
+        runs: []
+    },
+    currentRun: null,
+    lastFinishedRun: null
+};
+
+window.playtestBot = playtestBot;
+window.exportPlaytestData = exportPlaytestData;
+window.restartPlaytestRun = restartPlaytestRun;
 
 function resizeCanvasDisplay() {
     const aspect = GAME_WIDTH / GAME_HEIGHT;
@@ -111,6 +164,19 @@ touchButtons.forEach(button => {
     });
 });
 
+if (playtestElements.toggle) {
+    playtestElements.toggle.addEventListener('click', () => togglePlaytestBot());
+}
+if (playtestElements.speed) {
+    playtestElements.speed.addEventListener('click', () => cyclePlaytestSpeed());
+}
+if (playtestElements.export) {
+    playtestElements.export.addEventListener('click', () => exportPlaytestData());
+}
+if (playtestElements.reset) {
+    playtestElements.reset.addEventListener('click', () => restartPlaytestRun());
+}
+
 window.addEventListener('resize', resizeCanvasDisplay);
 window.addEventListener('orientationchange', resizeCanvasDisplay);
 resizeCanvasDisplay();
@@ -127,16 +193,16 @@ const RAW_ROOMS = {
     CHICKEN_RUN: { x: -198, y: -212, w: 9, h: 20, name: 'Chicken run', color: '#b0b0b0' },
     CHICKEN_COOP: { x: -195, y: -200, w: 4, h: 2, name: 'Chicken coop', color: '#369b4a' },
     LIVING_ROOM: { x: -241, y: -226, w: 20, h: 27, name: 'Living room', color: '#363d9b' },
-    KITCHEN: { x: -249, y: -226, w: 8, h: 13, name: 'Kitchen', color: '#ffffff' },
-    READING__DOG_ROOM: { x: -256, y: -226, w: 7, h: 13, name: 'Reading / dog room', color: '#fe7c7c' },
-    BABYS_ROOM: { x: -256, y: -208, w: 15, h: 9, name: "Baby's room", color: '#fe7cf9' },
+    KITCHEN: { x: -249, y: -226, w: 8, h: 15, name: 'Kitchen', color: '#ffffff' },
+    READING__DOG_ROOM: { x: -256, y: -226, w: 7, h: 15, name: 'Reading / dog room', color: '#fe7c7c' },
+    BABYS_ROOM: { x: -256, y: -209, w: 15, h: 10, name: "Baby's room", color: '#fe7cf9' },
     MASTER_BEDROOM: { x: -264, y: -217, w: 8, h: 18, name: 'Master bedroom', color: '#aea8ff' },
     ENSUITE: { x: -264, y: -226, w: 8, h: 9, name: 'Ensuite', color: '#6a5ffc' },
-    HOUSEMATE_ROOM: { x: -221, y: -219, w: 11, h: 5, name: "Housemate's room", color: '#78ff75' },
-    HOME_OFFICE: { x: -221, y: -209, w: 5, h: 10, name: 'Home office', color: '#7ceffe' },
-    SPARE_ROOM: { x: -216, y: -209, w: 6, h: 10, name: 'Spare room', color: '#a86161' },
-    CORRIDOR_RIGHT: { x: -221, y: -214, w: 11, h: 5, name: 'Corridor (right)', color: '#f7ca50' },
-    CORRIDOR_LEFT: { x: -256, y: -213, w: 15, h: 5, name: 'Corridor (left)', color: '#f7ca50' },
+    HOUSEMATE_ROOM: { x: -221, y: -219, w: 11, h: 7, name: "Housemate's room", color: '#78ff75' },
+    HOME_OFFICE: { x: -221, y: -210, w: 5, h: 11, name: 'Home office', color: '#7ceffe' },
+    SPARE_ROOM: { x: -216, y: -210, w: 6, h: 11, name: 'Spare room', color: '#a86161' },
+    CORRIDOR_RIGHT: { x: -221, y: -212, w: 11, h: 2, name: 'Corridor (right)', color: '#f7ca50' },
+    CORRIDOR_LEFT: { x: -256, y: -211, w: 15, h: 2, name: 'Corridor (left)', color: '#f7ca50' },
     PATIO_MAIN: { x: -221, y: -226, w: 15, h: 7, name: 'Patio', color: '#fff475' },
     PATIO_STRIP: { x: -210, y: -219, w: 4, h: 20, name: 'Patio strip', color: '#fff475' },
     DOG_PATIO: { x: -264, y: -199, w: 43, h: 5, name: 'Dog patio', color: '#eef58e' },
@@ -158,22 +224,23 @@ const RAW_WALLS = [
     // Living room
     { x: -241, y: -226, w: 20, h: 0.3 }, { x: -241, y: -199.3, w: 20, h: 0.3 }, { x: -241, y: -226, w: 0.3, h: 27 }, { x: -221.3, y: -226, w: 0.3, h: 27 },
     // Patios
-    { x: -221, y: -219.3, w: 11, h: 0.3 },
-    // Housemate (h: 5, y: -219 to -214)
-    { x: -221, y: -219, w: 11, h: 0.3 }, { x: -221, y: -214.3, w: 11, h: 0.3 }, { x: -221, y: -219, w: 0.3, h: 5 }, { x: -210.3, y: -219, w: 0.3, h: 5 },
-    // Corridors (5 tiles tall)
-    { x: -221, y: -214, w: 11, h: 0.3 }, { x: -221, y: -209.3, w: 11, h: 0.3 }, { x: -221, y: -214, w: 0.3, h: 5 }, { x: -210.3, y: -214, w: 0.3, h: 5 },
-    { x: -256, y: -213, w: 15, h: 0.3 }, { x: -256, y: -208.3, w: 15, h: 0.3 }, { x: -256, y: -213, w: 0.3, h: 5 }, { x: -241.3, y: -213, w: 0.3, h: 5 },
-    // Kitchen (h: 13, y: -226 to -213)
-    { x: -249, y: -226, w: 8, h: 0.3 }, { x: -249, y: -213.3, w: 8, h: 0.3 }, { x: -249, y: -226, w: 0.3, h: 13 }, { x: -241.3, y: -226, w: 0.3, h: 13 },
-    // Reading (h: 13, y: -226 to -213)
-    { x: -256, y: -226, w: 7, h: 0.3 }, { x: -256, y: -213.3, w: 7, h: 0.3 }, { x: -256, y: -226, w: 0.3, h: 13 }, { x: -249.3, y: -226, w: 0.3, h: 13 },
-    // Baby (h: 9, y: -208 to -199)
-    { x: -256, y: -208, w: 15, h: 0.3 }, { x: -256, y: -199.3, w: 15, h: 0.3 }, { x: -256, y: -208, w: 0.3, h: 9 }, { x: -241.3, y: -208, w: 0.3, h: 9 },
-    // Office (h: 10, y: -209 to -199)
-    { x: -221, y: -209, w: 5, h: 0.3 }, { x: -221, y: -199.3, w: 5, h: 0.3 }, { x: -221, y: -209, w: 0.3, h: 10 }, { x: -216.3, y: -209, w: 0.3, h: 10 },
-    // Spare (h: 10, y: -209 to -199)
-    { x: -216, y: -209, w: 6, h: 0.3 }, { x: -216, y: -199.3, w: 6, h: 0.3 }, { x: -216, y: -209, w: 0.3, h: 10 }, { x: -210.3, y: -209, w: 0.3, h: 10 },
+    { x: -221, y: -219.3, w: 15, h: 0.3 },
+    { x: -210, y: -219, w: 4, h: 0.3 }, { x: -210, y: -219, w: 0.3, h: 20 },
+    // Housemate
+    { x: -221, y: -219, w: 11, h: 0.3 }, { x: -221, y: -212.3, w: 11, h: 0.3 }, { x: -221, y: -219, w: 0.3, h: 7 }, { x: -210.3, y: -219, w: 0.3, h: 7 },
+    // Corridors
+    { x: -221, y: -212, w: 11, h: 0.3 }, { x: -221, y: -210.3, w: 11, h: 0.3 }, { x: -221, y: -212, w: 0.3, h: 2 }, { x: -210.3, y: -212, w: 0.3, h: 2 },
+    { x: -256, y: -211, w: 15, h: 0.3 }, { x: -256, y: -209.3, w: 15, h: 0.3 }, { x: -256, y: -211, w: 0.3, h: 2 }, { x: -241.3, y: -211, w: 0.3, h: 2 },
+    // Kitchen
+    { x: -249, y: -226, w: 8, h: 0.3 }, { x: -249, y: -211.3, w: 8, h: 0.3 }, { x: -249, y: -226, w: 0.3, h: 15 }, { x: -241.3, y: -226, w: 0.3, h: 15 },
+    // Reading
+    { x: -256, y: -226, w: 7, h: 0.3 }, { x: -256, y: -211.3, w: 7, h: 0.3 }, { x: -256, y: -226, w: 0.3, h: 15 }, { x: -249.3, y: -226, w: 0.3, h: 15 },
+    // Baby
+    { x: -256, y: -209, w: 15, h: 0.3 }, { x: -256, y: -199.3, w: 15, h: 0.3 }, { x: -256, y: -209, w: 0.3, h: 10 }, { x: -241.3, y: -209, w: 0.3, h: 10 },
+    // Office
+    { x: -221, y: -210, w: 5, h: 0.3 }, { x: -221, y: -199.3, w: 5, h: 0.3 }, { x: -221, y: -210, w: 0.3, h: 11 }, { x: -216.3, y: -210, w: 0.3, h: 11 },
+    // Spare
+    { x: -216, y: -210, w: 6, h: 0.3 }, { x: -216, y: -199.3, w: 6, h: 0.3 }, { x: -216, y: -210, w: 0.3, h: 11 }, { x: -210.3, y: -210, w: 0.3, h: 11 },
     // Master/Ensuite
     { x: -264, y: -217, w: 8, h: 0.3 }, { x: -264, y: -199.3, w: 8, h: 0.3 }, { x: -264, y: -217, w: 0.3, h: 18 }, { x: -256.3, y: -217, w: 0.3, h: 18 },
     { x: -264, y: -226, w: 8, h: 0.3 }, { x: -264, y: -217.3, w: 8, h: 0.3 }, { x: -264, y: -226, w: 0.3, h: 9 }, { x: -256.3, y: -226, w: 0.3, h: 9 },
@@ -188,16 +255,16 @@ for (const w of RAW_WALLS) {
 
 const RAW_DOORS = [
     { x: -262.0, y: -217.8, w: 2.0, h: 2.0, orient: 'h', name: 'Ensuite → Master Bedroom', open: true },
-    { x: -257.0, y: -212.5, w: 2.0, h: 2.0, orient: 'v', name: 'Master Bedroom → Corridor (left)', open: true },
-    { x: -254.3, y: -214.0, w: 2.0, h: 2.0, orient: 'h', name: 'Reading → Corridor (left)', open: true },
-    { x: -246.7, y: -214.0, w: 2.0, h: 2.0, orient: 'h', name: 'Kitchen → Corridor (left)', open: true },
-    { x: -250.0, y: -209.0, w: 2.0, h: 2.0, orient: 'h', name: 'Baby → Corridor (left)', open: true },
-    { x: -242.0, y: -212.5, w: 2.0, h: 2.0, orient: 'v', name: 'Corridor (left) → Living', open: true },
-    { x: -242.0, y: -220.0, w: 2.0, h: 2.0, orient: 'v', name: 'Kitchen → Living', open: true },
-    { x: -221.7, y: -213.0, w: 2.0, h: 2.0, orient: 'v', name: 'Living → Corridor (right)', open: true },
-    { x: -218.5, y: -215.0, w: 2.0, h: 2.0, orient: 'h', name: 'Corridor (right) → Housemate', open: true },
-    { x: -220.5, y: -210.0, w: 2.0, h: 2.0, orient: 'h', name: 'Corridor (right) → Office', open: true },
-    { x: -214.5, y: -210.0, w: 2.0, h: 2.0, orient: 'h', name: 'Corridor (right) → Spare', open: true },
+    { x: -256.3, y: -211.4, w: 0.3, h: 2.8, orient: 'v', name: 'Master Bedroom → Corridor (left)', open: true },
+    { x: -254.2, y: -211.3, w: 2.4, h: 0.3, orient: 'h', name: 'Reading → Corridor (left)', open: true },
+    { x: -246.6, y: -211.3, w: 2.4, h: 0.3, orient: 'h', name: 'Kitchen → Corridor (left)', open: true },
+    { x: -249.9, y: -209.3, w: 2.4, h: 0.3, orient: 'h', name: 'Baby → Corridor (left)', open: true },
+    { x: -241.3, y: -211.4, w: 0.3, h: 2.8, orient: 'v', name: 'Corridor (left) → Living', open: true },
+    { x: -241.3, y: -220.0, w: 0.3, h: 3.2, orient: 'v', name: 'Kitchen → Living', open: true },
+    { x: -221.0, y: -212.4, w: 0.3, h: 2.8, orient: 'v', name: 'Living → Corridor (right)', open: true },
+    { x: -218.4, y: -212.3, w: 2.4, h: 0.3, orient: 'h', name: 'Corridor (right) → Housemate', open: true },
+    { x: -220.4, y: -210.3, w: 2.2, h: 0.3, orient: 'h', name: 'Corridor (right) → Office', open: true },
+    { x: -214.4, y: -210.3, w: 2.2, h: 0.3, orient: 'h', name: 'Corridor (right) → Spare', open: true },
     { x: -221.7, y: -224.3, w: 2.0, h: 2.0, orient: 'v', name: 'Living → Patio', open: false },
     { x: -211.0, y: -213.0, w: 2.0, h: 2.0, orient: 'v', name: 'Corridor (right) → Patio strip', open: false },
     { x: -233.5, y: -200.0, w: 2.0, h: 2.0, orient: 'h', name: 'Living → Dog patio', open: false },
@@ -212,6 +279,28 @@ const RAW_DOORS = [
 const DOORS = [];
 for (const d of RAW_DOORS) {
     DOORS.push({ x: d.x + OFFSET_X, y: d.y + OFFSET_Y, w: d.w, h: d.h, orient: d.orient || 'h', name: d.name, open: d.open });
+}
+
+function createWorldObject(roomKey, dx, dy, w, h, options = {}) {
+    const room = RAW_ROOMS[roomKey];
+    return { x: room.x + dx, y: room.y + dy, w, h, ...options };
+}
+
+function getRawDoorCenter(name) {
+    const door = RAW_DOORS.find(d => d.name === name);
+    if (!door) {
+        throw new Error(`Missing door waypoint source: ${name}`);
+    }
+    return { x: door.x + door.w / 2, y: door.y + door.h / 2 };
+}
+
+function makeDoorWaypoint(name, connections) {
+    return { ...getRawDoorCenter(name), connections };
+}
+
+function makeRoomWaypoint(roomKey, connections) {
+    const room = RAW_ROOMS[roomKey];
+    return { x: room.x + room.w / 2, y: room.y + room.h / 2, connections };
 }
 
 // --- NAVIGATION GRAPH ---
@@ -256,7 +345,7 @@ const POIS = {
     PATIO: { x: ROOMS.PATIO_MAIN.x + 8, y: ROOMS.PATIO_MAIN.y + 3, type: 'coverage', name: 'Patio', room: 'PATIO_MAIN' },
     BEER: { x: ROOMS.SHED.x + 8, y: ROOMS.SHED.y + 3, type: 'fetch', name: 'Beer', room: 'SHED' },
     SPRINKLER: { x: ROOMS.DOG_YARD.x + 20, y: ROOMS.DOG_YARD.y + 20, type: 'coverage', name: 'Sprinkler', room: 'DOG_YARD' },
-    VACUUM: { x: ROOMS.CORRIDOR_RIGHT.x + 2, y: ROOMS.CORRIDOR_RIGHT.y + 2, type: 'tool', name: 'Vacuum', room: 'CORRIDOR_RIGHT' },
+    VACUUM: { x: ROOMS.CORRIDOR_RIGHT.x + 5, y: ROOMS.CORRIDOR_RIGHT.y + 1, type: 'tool', name: 'Vacuum', room: 'CORRIDOR_RIGHT' },
     BED: { x: ROOMS.MASTER_BEDROOM.x + 4, y: ROOMS.MASTER_BEDROOM.y + 10, type: 'relax', name: 'Bed', room: 'MASTER_BEDROOM' },
     BABY_COT: { x: ROOMS.BABYS_ROOM.x + 8, y: ROOMS.BABYS_ROOM.y + 4, type: 'hold', name: 'Baby', room: 'BABYS_ROOM' },
     CHICKEN_FEEDER: { x: ROOMS.CHICKEN_YARD.x + 20, y: ROOMS.CHICKEN_YARD.y + 20, type: 'fetch', name: 'Chicken Feed', room: 'CHICKEN_YARD' },
@@ -265,11 +354,42 @@ const POIS = {
 };
 
 const WORLD_OBJECTS = {
-    COUCH: { x: -238, y: -220, w: 30, h: 12, color: '#5d4037', type: 'relax' },
-    COFFEE_MACHINE: { x: -248, y: -215, w: 4, h: 4, color: '#333', type: 'hold_refill' },
-    BED: { x: -262, y: -210, w: 20, h: 25, color: '#1565c0', type: 'relax' },
-    TOILET: { x: -262, y: -224, w: 6, h: 8, color: '#eee', type: 'hide' },
-    TOY_BOX: { x: -238, y: -224, w: 8, h: 6, color: '#fbc02d', type: 'container' }
+    COUCH: createWorldObject('LIVING_ROOM', 2.5, 13.0, 6.5, 3.0, { color: '#6d4c41', accent: '#8d6e63', type: 'relax' }),
+    ARMCHAIR: createWorldObject('LIVING_ROOM', 11.5, 11.5, 3.5, 3.5, { color: '#8d6e63', accent: '#bcaaa4', type: 'decor' }),
+    COFFEE_TABLE: createWorldObject('LIVING_ROOM', 10.5, 15.0, 4.0, 2.0, { color: '#8d6e63', accent: '#d7ccc8', type: 'decor' }),
+    TV_UNIT: createWorldObject('LIVING_ROOM', 17.0, 8.0, 1.5, 7.0, { color: '#263238', accent: '#546e7a', type: 'decor' }),
+    BOOKSHELF_LIVING: createWorldObject('LIVING_ROOM', 1.0, 2.0, 1.5, 8.0, { color: '#795548', accent: '#a1887f', type: 'decor' }),
+    KITCHEN_COUNTER: createWorldObject('KITCHEN', 0.7, 1.2, 6.2, 1.4, { color: '#b0bec5', accent: '#eceff1', type: 'decor' }),
+    KITCHEN_ISLAND: createWorldObject('KITCHEN', 1.5, 9.5, 4.0, 2.0, { color: '#90a4ae', accent: '#cfd8dc', type: 'decor' }),
+    FRIDGE: createWorldObject('KITCHEN', 6.2, 2.5, 1.2, 3.2, { color: '#cfd8dc', accent: '#90a4ae', type: 'decor' }),
+    SINK_UNIT: createWorldObject('KITCHEN', 0.8, 12.0, 5.8, 1.3, { color: '#90a4ae', accent: '#eceff1', type: 'decor' }),
+    COFFEE_MACHINE: createWorldObject('KITCHEN', 5.2, 3.2, 1.2, 1.1, { color: '#4e342e', accent: '#cfd8dc', type: 'hold_refill' }),
+    READING_CHAIR: createWorldObject('READING__DOG_ROOM', 1.0, 2.0, 3.0, 3.5, { color: '#8d6e63', accent: '#bcaaa4', type: 'decor' }),
+    DOG_BED_READING: createWorldObject('READING__DOG_ROOM', 1.0, 9.5, 3.5, 2.5, { color: '#5d4037', accent: '#8d6e63', type: 'decor' }),
+    BOOKSHELF_READING: createWorldObject('READING__DOG_ROOM', 5.2, 2.0, 1.2, 8.5, { color: '#6d4c41', accent: '#a1887f', type: 'decor' }),
+    BABY_COT_OBJECT: createWorldObject('BABYS_ROOM', 7.5, 2.0, 4.5, 2.8, { color: '#f8bbd0', accent: '#ffffff', type: 'decor' }),
+    CHANGE_TABLE: createWorldObject('BABYS_ROOM', 1.2, 2.0, 3.0, 1.8, { color: '#ce93d8', accent: '#f3e5f5', type: 'decor' }),
+    NURSERY_DRESSER: createWorldObject('BABYS_ROOM', 1.2, 6.2, 4.2, 1.8, { color: '#bcaaa4', accent: '#efebe9', type: 'decor' }),
+    PLAY_MAT: createWorldObject('BABYS_ROOM', 9.2, 6.0, 4.2, 2.5, { color: '#ffcc80', accent: '#fff3e0', type: 'decor' }),
+    BED: createWorldObject('MASTER_BEDROOM', 1.0, 7.0, 6.0, 6.5, { color: '#5c6bc0', accent: '#c5cae9', type: 'relax' }),
+    WARDROBE: createWorldObject('MASTER_BEDROOM', 0.8, 1.0, 2.0, 4.2, { color: '#6d4c41', accent: '#a1887f', type: 'decor' }),
+    DRESSER: createWorldObject('MASTER_BEDROOM', 3.8, 1.4, 3.0, 1.6, { color: '#8d6e63', accent: '#d7ccc8', type: 'decor' }),
+    TOILET: createWorldObject('ENSUITE', 1.2, 5.2, 1.6, 2.2, { color: '#eceff1', accent: '#ffffff', type: 'hide' }),
+    VANITY: createWorldObject('ENSUITE', 1.0, 1.1, 2.6, 1.3, { color: '#90a4ae', accent: '#eceff1', type: 'decor' }),
+    SHOWER: createWorldObject('ENSUITE', 4.2, 1.0, 2.7, 3.0, { color: '#80deea', accent: '#e0f7fa', type: 'decor' }),
+    HOUSEMATE_BED: createWorldObject('HOUSEMATE_ROOM', 0.8, 1.0, 4.5, 3.0, { color: '#81c784', accent: '#c8e6c9', type: 'decor' }),
+    HOUSEMATE_DESK: createWorldObject('HOUSEMATE_ROOM', 6.0, 1.0, 3.4, 1.8, { color: '#8d6e63', accent: '#d7ccc8', type: 'decor' }),
+    HOUSEMATE_WARDROBE: createWorldObject('HOUSEMATE_ROOM', 9.2, 2.5, 1.0, 3.5, { color: '#6d4c41', accent: '#a1887f', type: 'decor' }),
+    OFFICE_DESK: createWorldObject('HOME_OFFICE', 0.5, 1.1, 3.8, 1.7, { color: '#8d6e63', accent: '#d7ccc8', type: 'decor' }),
+    OFFICE_CHAIR: createWorldObject('HOME_OFFICE', 1.7, 3.1, 1.4, 1.4, { color: '#607d8b', accent: '#b0bec5', type: 'decor' }),
+    OFFICE_SHELF: createWorldObject('HOME_OFFICE', 0.5, 6.3, 1.1, 3.6, { color: '#6d4c41', accent: '#a1887f', type: 'decor' }),
+    SPARE_BED: createWorldObject('SPARE_ROOM', 2.0, 1.0, 3.2, 4.2, { color: '#a1887f', accent: '#d7ccc8', type: 'decor' }),
+    STORAGE_SHELF: createWorldObject('SPARE_ROOM', 0.4, 1.0, 1.0, 5.0, { color: '#6d4c41', accent: '#a1887f', type: 'decor' }),
+    TOY_BOX: createWorldObject('SPARE_ROOM', 1.0, 7.0, 3.2, 2.0, { color: '#fbc02d', accent: '#fff59d', type: 'container' }),
+    DOG_BED_PATIO: createWorldObject('DOG_PATIO', 2.0, 1.0, 4.0, 2.0, { color: '#8d6e63', accent: '#bcaaa4', type: 'decor' }),
+    DOG_BOWL_STAND: createWorldObject('DOG_PATIO', 30.5, 1.1, 3.2, 1.2, { color: '#90a4ae', accent: '#eceff1', type: 'decor' }),
+    SHED_FRIDGE: createWorldObject('SHED', 9.5, 1.2, 3.0, 4.2, { color: '#b0bec5', accent: '#eceff1', type: 'decor' }),
+    SHED_SHELF: createWorldObject('SHED', 1.0, 1.0, 3.0, 1.4, { color: '#8d6e63', accent: '#d7ccc8', type: 'decor' })
 };
 
 // Sprite Cache - stores loaded character images
@@ -337,7 +457,7 @@ let gameState = {
     overstimulation: 0,
     isRunning: true,
     tasks: [],
-    dad: { x: (ROOMS.LIVING_ROOM.x + 5) * TILE_SIZE, y: (ROOMS.LIVING_ROOM.y + 8) * TILE_SIZE, width: 30, height: 30, carrying: null },
+    dad: { x: (ROOMS.LIVING_ROOM.x + 5) * TILE_SIZE, y: (ROOMS.LIVING_ROOM.y + 8) * TILE_SIZE, width: DAD_HITBOX_SIZE, height: DAD_HITBOX_SIZE, carrying: null },
     npcs: {
         baby: { x: 5, y: 5, width: 25, height: 25, withAdult: true },
         wife: { x: 12, y: 8 },
@@ -415,7 +535,13 @@ class Task {
 
 // Input handling
 window.addEventListener('keydown', (e) => {
-    switch (e.key.toLowerCase()) {
+    const key = e.key.toLowerCase();
+
+    if (playtestBot.active && BOT_CONTROLLED_KEYS.has(key)) {
+        return;
+    }
+
+    switch (key) {
         case 'w': case 'arrowup': input.up = true; break;
         case 's': case 'arrowdown': input.down = true; break;
         case 'a': case 'arrowleft': input.left = true; break;
@@ -429,12 +555,22 @@ window.addEventListener('keydown', (e) => {
         case 'shift': input.sprinting = true; break;
         case 'q': input.bark = true; break;
         case 'r': input.interact = true; break;  // Interact with NPCs
+        case 'p': togglePlaytestBot(); break;
+        case '[': cyclePlaytestSpeed(); break;
+        case ']': exportPlaytestData(); break;
+        case '0': restartPlaytestRun(); break;
         case '\\': DEBUG_MODE = !DEBUG_MODE; break;
     }
 });
 
 window.addEventListener('keyup', (e) => {
-    switch (e.key.toLowerCase()) {
+    const key = e.key.toLowerCase();
+
+    if (playtestBot.active && BOT_CONTROLLED_KEYS.has(key)) {
+        return;
+    }
+
+    switch (key) {
         case 'w': case 'arrowup': input.up = false; break;
         case 's': case 'arrowdown': input.down = false; break;
         case 'a': case 'arrowleft': input.left = false; break;
@@ -451,15 +587,77 @@ window.addEventListener('keyup', (e) => {
 
 // Initialize game
 function initGame() {
-    // Load all character sprites
-    loadSprites();
+    if (!spriteCache.fallbackLoaded) {
+        loadSprites();
+    }
 
+    hideModal();
+    clearBotControls();
+    activeDialogues = [];
+    for (const key of Object.keys(dialogueCooldowns)) {
+        dialogueCooldowns[key] = 0;
+    }
+
+    gameState.nextTaskId = 0;
+    gameState.selectedTaskId = null;
+    gameState.lastEventTick = 0;
+    gameState.eventTickInterval = 6.66;
+    gameState.stats = {
+        tasksCompleted: 0,
+        peakStimulation: 0,
+        daysCompleted: 0
+    };
     gameState.tasks = [];
     gameState.entities = [];
+    gameState.audioRings = [];
     gameState.overstimulation = 0;
     gameState.time = 0;
     gameState.day = 1;
     gameState.isRunning = true;
+    gameState.sprintergyLeft = gameState.maxSprintEnergy;
+    gameState.barkCooldown = 0;
+    gameState.coffeeBuff = false;
+    gameState.coffeeBuffTimer = 0;
+    gameState.coffeeProgress = 0;
+    gameState.isRelaxing = false;
+    gameState.relaxSpot = null;
+    gameState.isHidingInToilet = false;
+    gameState.cameraScale = 1.0;
+    gameState.cameraOffsetX = 0;
+    gameState.cameraOffsetY = 0;
+    gameState.notification = null;
+    gameState.dad.x = (ROOMS.LIVING_ROOM.x + 5) * TILE_SIZE;
+    gameState.dad.y = (ROOMS.LIVING_ROOM.y + 8) * TILE_SIZE;
+    gameState.dad.width = DAD_HITBOX_SIZE;
+    gameState.dad.height = DAD_HITBOX_SIZE;
+    gameState.dad.carrying = null;
+    gameState.npcStates = {
+        wife: { x: (ROOMS.KITCHEN.x + 2) * TILE_SIZE, y: (ROOMS.KITCHEN.y + 2) * TILE_SIZE, targetRoom: 'KITCHEN', moveSpeed: 37.5, canUseDoors: true, doorInteraction: null, currentPath: [], pathRecalcTimer: 0 },
+        housemate: { x: (ROOMS.SPARE_ROOM.x + 2) * TILE_SIZE, y: (ROOMS.SPARE_ROOM.y + 2) * TILE_SIZE, targetRoom: 'SPARE_ROOM', moveSpeed: 30, canUseDoors: true, doorInteraction: null, currentPath: [], pathRecalcTimer: 0 },
+        baby: { x: (ROOMS.BABYS_ROOM.x + 4) * TILE_SIZE, y: (ROOMS.BABYS_ROOM.y + 2) * TILE_SIZE, targetRoom: 'BABYS_ROOM', moveSpeed: 22.5, canUseDoors: false, currentPath: [], pathRecalcTimer: 0 },
+        brownDog: { x: (ROOMS.LIVING_ROOM.x + 3) * TILE_SIZE, y: (ROOMS.LIVING_ROOM.y + 10) * TILE_SIZE, targetRoom: 'LIVING_ROOM', moveSpeed: 60, canUseDoors: false, currentPath: [], pathRecalcTimer: 0 },
+        blackDog: { x: (ROOMS.LIVING_ROOM.x + 5) * TILE_SIZE, y: (ROOMS.LIVING_ROOM.y + 10) * TILE_SIZE, targetRoom: 'LIVING_ROOM', moveSpeed: 67.5, canUseDoors: false, currentPath: [], pathRecalcTimer: 0 },
+        munty: null
+    };
+    DOORS.forEach((door, index) => {
+        door.open = RAW_DOORS[index].open;
+    });
+    playtestBot.route = null;
+    playtestBot.routeIndex = 0;
+    playtestBot.objective = null;
+    playtestBot.objectiveStartedAt = 0;
+    playtestBot.modalContinueDelay = 0;
+    playtestBot.sampleTimer = 0;
+    playtestBot.stuckCounter = 0;
+    playtestBot.lastPosition = null;
+    playtestBot.recoveryTimer = 0;
+    playtestBot.recoveryTarget = null;
+    playtestBot.lastMoveTarget = null;
+    playtestBot.lastRoutePreview = [];
+    playtestBot.lastTargetDoorName = null;
+    playtestBot.blockedObjectives = {};
+    playtestBot.doorActionCooldown = 0;
+    playtestBot.exitIntent = { toilet: false, relax: false };
 
     // Initialize chickens in the chicken run with giant door open
     gameState.chickens = [];
@@ -489,6 +687,13 @@ function initGame() {
 
     // Generate initial tasks
     addInitialTasks();
+    lastTime = 0;
+
+    if (playtestBot.active) {
+        startPlaytestRun('restart');
+    } else {
+        updatePlaytestUI();
+    }
 }
 
 function addInitialTasks() {
@@ -533,6 +738,1201 @@ function resetMowerState() {
         width: 34,
         height: 18
     };
+}
+
+function hideModal() {
+    const modal = document.getElementById('modal');
+    if (modal) {
+        modal.style.display = 'none';
+    }
+}
+
+function isModalVisible() {
+    const modal = document.getElementById('modal');
+    return !!modal && modal.style.display === 'flex';
+}
+
+function clearBotControls() {
+    input.up = false;
+    input.down = false;
+    input.left = false;
+    input.right = false;
+    input.action = false;
+    input.actionHeld = false;
+    input.sprinting = false;
+    input.bark = false;
+    input.interact = false;
+}
+
+function getWorldObjectCenter(key) {
+    const obj = WORLD_OBJECTS[key];
+    if (!obj) return null;
+    return {
+        x: (obj.x + OFFSET_X + obj.w / 2) * TILE_SIZE,
+        y: (obj.y + OFFSET_Y + obj.h / 2) * TILE_SIZE
+    };
+}
+
+function getDoorCenter(door) {
+    return {
+        x: (door.x + door.w / 2) * TILE_SIZE,
+        y: (door.y + door.h / 2) * TILE_SIZE
+    };
+}
+
+function getDoorForWaypointName(waypointName) {
+    if (!waypointName || (!waypointName.startsWith('DOOR_') && !waypointName.startsWith('GATE_'))) {
+        return null;
+    }
+
+    const waypoint = WAYPOINTS[waypointName];
+    if (!waypoint) return null;
+
+    let closestDoor = null;
+    let closestDist = 36;
+    for (const door of DOORS) {
+        const center = getDoorCenter(door);
+        const dist = Math.hypot(center.x - waypoint.pixelX, center.y - waypoint.pixelY);
+        if (dist < closestDist) {
+            closestDist = dist;
+            closestDoor = door;
+        }
+    }
+
+    return closestDoor;
+}
+
+function describePlaytestWaypoint(waypointName) {
+    if (!waypointName) return 'Direct';
+
+    const door = getDoorForWaypointName(waypointName);
+    if (door) return door.name;
+    if (ROOMS[waypointName]) return ROOMS[waypointName].name;
+
+    return waypointName.replace(/_/g, ' ');
+}
+
+function getPlaytestDebugSnapshot() {
+    if (typeof gameState === 'undefined') return null;
+
+    const dadCenterX = gameState.dad.x + gameState.dad.width / 2;
+    const dadCenterY = gameState.dad.y + gameState.dad.height / 2;
+    const roomKey = getRoomAt(dadCenterX, dadCenterY);
+    const nearbyDoor = findNearbyDoor();
+    const nearbyTask = findNearbyTask();
+    const targetDoor = playtestBot.lastMoveTarget ? getDoorForWaypointName(playtestBot.lastMoveTarget.waypointName) : null;
+    const objective = playtestBot.objective ? {
+        label: playtestBot.objective.label,
+        type: playtestBot.objective.type,
+        targetX: Math.round(playtestBot.objective.targetX),
+        targetY: Math.round(playtestBot.objective.targetY),
+        distance: Math.round(Math.hypot(playtestBot.objective.targetX - dadCenterX, playtestBot.objective.targetY - dadCenterY))
+    } : null;
+
+    return {
+        room: roomKey ? ROOMS[roomKey].name : 'Unknown',
+        position: {
+            x: Math.round(gameState.dad.x),
+            y: Math.round(gameState.dad.y),
+            centerX: Math.round(dadCenterX),
+            centerY: Math.round(dadCenterY)
+        },
+        objective,
+        nextMove: playtestBot.lastMoveTarget ? {
+            label: describePlaytestWaypoint(playtestBot.lastMoveTarget.waypointName),
+            x: Math.round(playtestBot.lastMoveTarget.x),
+            y: Math.round(playtestBot.lastMoveTarget.y)
+        } : null,
+        route: playtestBot.route ? playtestBot.route.waypoints.slice(playtestBot.routeIndex, playtestBot.routeIndex + 5).map(describePlaytestWaypoint) : [],
+        targetDoor: targetDoor ? { name: targetDoor.name, open: targetDoor.open } : null,
+        nearbyDoor: nearbyDoor ? { name: nearbyDoor.name, open: nearbyDoor.open } : null,
+        nearbyTask: nearbyTask ? {
+            name: nearbyTask.name,
+            location: nearbyTask.location,
+            type: nearbyTask.type,
+            progress: Number((nearbyTask.progress || 0).toFixed(1)),
+            maxProgress: nearbyTask.maxProgress || 0
+        } : null,
+        recovery: playtestBot.recoveryTimer > 0 && playtestBot.recoveryTarget ? {
+            timeLeft: Number(playtestBot.recoveryTimer.toFixed(2)),
+            x: Math.round(playtestBot.recoveryTarget.x),
+            y: Math.round(playtestBot.recoveryTarget.y)
+        } : null,
+        stuckCounter: playtestBot.stuckCounter
+    };
+}
+
+function buildPlaytestExportPayload() {
+    const payload = {
+        exportedAt: new Date().toISOString(),
+        version: 'playtest-bot-v1',
+        sessionStartedAt: playtestBot.telemetry.sessionStartedAt,
+        active: playtestBot.active,
+        timeScale: playtestBot.timeScale,
+        snapshot: getPlaytestDebugSnapshot(),
+        runs: playtestBot.telemetry.runs.slice()
+    };
+
+    if (playtestBot.currentRun) {
+        payload.currentRun = {
+            runId: playtestBot.currentRun.runId,
+            startedAt: playtestBot.currentRun.startedAt,
+            day: gameState.day,
+            time: Number(gameState.time.toFixed(2)),
+            events: playtestBot.currentRun.events.slice(),
+            samples: playtestBot.currentRun.samples.slice(),
+            completedTasks: playtestBot.currentRun.completedTasks.slice(),
+            spawnedTasks: playtestBot.currentRun.spawnedTasks.slice()
+        };
+    }
+
+    return payload;
+}
+
+function formatPlaytestEvent(event) {
+    const stamp = `${event.time.toFixed(1)}s`;
+
+    switch (event.type) {
+        case 'objective':
+            return `${stamp} objective: ${event.label}`;
+        case 'task_spawned':
+            return `${stamp} task+: ${event.name} @ ${event.location}`;
+        case 'task_completed':
+            return `${stamp} task done: ${event.name}`;
+        case 'door_toggled':
+            return `${stamp} door: ${event.name} ${event.open ? 'open' : 'closed'}`;
+        case 'stuck':
+            return `${stamp} stuck#${event.count}: ${event.objective}${event.x !== undefined ? ` @ ${event.x},${event.y}` : ''}`;
+        case 'recovery':
+            return `${stamp} recovery -> ${event.x},${event.y}`;
+        case 'objective_blocked':
+            return `${stamp} blocked: ${event.label}`;
+        case 'bark':
+            return `${stamp} bark`;
+        case 'toilet_enter':
+            return `${stamp} toilet enter`;
+        case 'toilet_exit':
+            return `${stamp} toilet exit`;
+        case 'relax_exit':
+            return `${stamp} relax exit`;
+        case 'day_completed':
+            return `${stamp} day clear`;
+        case 'run_started':
+            return `${stamp} run start (${event.source})`;
+        default:
+            return `${stamp} ${event.type}`;
+    }
+}
+
+function updatePlaytestUI() {
+    if (!playtestElements.panel) return;
+
+    const latestRun = playtestBot.currentRun || playtestBot.lastFinishedRun;
+    const objectiveLabel = playtestBot.objective ? playtestBot.objective.label : 'Idle';
+    const stateLabel = playtestBot.active ? `ONLINE | ${playtestBot.timeScale}x` : 'OFFLINE';
+    const runLabel = latestRun ? `Run ${latestRun.runId}` : 'No runs yet';
+    const lines = [runLabel];
+    const snapshot = getPlaytestDebugSnapshot();
+    const detailLines = [];
+
+    if (typeof gameState !== 'undefined') {
+        lines.push(`Day ${gameState.day} @ ${Math.floor(gameState.time)}s`);
+        lines.push(`Stress ${Math.floor(gameState.overstimulation)}% | Tasks ${gameState.tasks.length}`);
+        lines.push(`Objective: ${objectiveLabel}`);
+    }
+
+    if (playtestBot.currentRun) {
+        lines.push(`Done ${gameState.stats.tasksCompleted} | Stuck ${playtestBot.currentRun.stuckCount}`);
+        lines.push(`Doors ${playtestBot.currentRun.doorsToggled} | Bark ${playtestBot.currentRun.barksUsed}`);
+    } else if (playtestBot.lastFinishedRun) {
+        lines.push(`Last: ${playtestBot.lastFinishedRun.summary.result}`);
+        lines.push(`Tasks ${playtestBot.lastFinishedRun.summary.tasksCompleted} | Peak ${playtestBot.lastFinishedRun.summary.peakStimulation}%`);
+    } else {
+        lines.push('Toggle the bot to start an autoplay run.');
+    }
+
+    if (snapshot) {
+        detailLines.push(`Room ${snapshot.room}`);
+        detailLines.push(`Pos ${snapshot.position.x},${snapshot.position.y}`);
+        detailLines.push(snapshot.objective
+            ? `Goal ${snapshot.objective.label} (${snapshot.objective.distance}px)`
+            : 'Goal Idle');
+        detailLines.push(snapshot.nextMove
+            ? `Move ${snapshot.nextMove.label} -> ${snapshot.nextMove.x},${snapshot.nextMove.y}`
+            : 'Move Direct');
+        detailLines.push(`Route ${snapshot.route.length ? snapshot.route.join(' -> ') : 'Direct'}`);
+        detailLines.push(snapshot.targetDoor
+            ? `Door ${snapshot.targetDoor.name} [${snapshot.targetDoor.open ? 'open' : 'closed'}]`
+            : 'Door none');
+        detailLines.push(snapshot.nearbyTask
+            ? `Task ${snapshot.nearbyTask.name} ${snapshot.nearbyTask.progress}/${snapshot.nearbyTask.maxProgress}`
+            : 'Task none nearby');
+        detailLines.push(snapshot.recovery
+            ? `Recovery ${snapshot.recovery.timeLeft}s -> ${snapshot.recovery.x},${snapshot.recovery.y}`
+            : `Recovery off | Stuck ${snapshot.stuckCounter}`);
+    } else {
+        detailLines.push('Waiting for world state.');
+    }
+
+    const eventSource = playtestBot.currentRun || playtestBot.lastFinishedRun;
+    const recentEvents = eventSource ? eventSource.events.slice(-PLAYTEST_LOG_LIMIT) : [];
+
+    playtestElements.status.textContent = stateLabel;
+    playtestElements.summary.textContent = lines.join('\n');
+    if (playtestElements.details) {
+        playtestElements.details.textContent = detailLines.join('\n');
+    }
+    if (playtestElements.events) {
+        playtestElements.events.textContent = recentEvents.length
+            ? recentEvents.map(formatPlaytestEvent).join('\n')
+            : 'No events yet.';
+    }
+    playtestElements.toggle.textContent = playtestBot.active ? 'STOP' : 'START';
+    playtestElements.speed.textContent = `${playtestBot.timeScale}x`;
+}
+
+function recordPlaytestEvent(type, details = {}) {
+    if (!playtestBot.currentRun) return;
+
+    const event = {
+        time: typeof gameState !== 'undefined' ? Number(gameState.time.toFixed(2)) : 0,
+        day: typeof gameState !== 'undefined' ? gameState.day : 0,
+        type
+    };
+
+    Object.assign(event, details);
+    playtestBot.currentRun.events.push(event);
+
+    if (playtestBot.currentRun.events.length > 2000) {
+        playtestBot.currentRun.events.shift();
+    }
+}
+
+function startPlaytestRun(source = 'manual') {
+    playtestBot.currentRun = {
+        runId: playtestBot.telemetry.runs.length + 1,
+        startedAt: new Date().toISOString(),
+        source,
+        events: [],
+        samples: [],
+        completedTasks: [],
+        spawnedTasks: [],
+        stuckCount: 0,
+        doorsToggled: 0,
+        barksUsed: 0,
+        objectiveChanges: 0,
+        coffeeUsed: false
+    };
+    playtestBot.lastFinishedRun = null;
+    playtestBot.objective = null;
+    playtestBot.route = null;
+    playtestBot.routeIndex = 0;
+    playtestBot.stuckCounter = 0;
+    playtestBot.lastPosition = null;
+    playtestBot.recoveryTimer = 0;
+    playtestBot.recoveryTarget = null;
+    playtestBot.lastMoveTarget = null;
+    playtestBot.lastRoutePreview = [];
+    playtestBot.lastTargetDoorName = null;
+    playtestBot.blockedObjectives = {};
+    playtestBot.doorActionCooldown = 0;
+    playtestBot.exitIntent = { toilet: false, relax: false };
+    playtestBot.sampleTimer = 0;
+    playtestBot.modalContinueDelay = 0.8;
+    playtestBot.knownTaskIds = gameState.tasks.map(task => task.id);
+    recordPlaytestEvent('run_started', { source });
+    updatePlaytestUI();
+}
+
+function finishPlaytestRun(result, extra = {}) {
+    if (!playtestBot.currentRun) return;
+
+    const completedRun = {
+        ...playtestBot.currentRun,
+        endedAt: new Date().toISOString(),
+        summary: {
+            result,
+            day: gameState.day,
+            tasksCompleted: gameState.stats.tasksCompleted,
+            peakStimulation: Math.floor(gameState.stats.peakStimulation),
+            daysCompleted: gameState.stats.daysCompleted,
+            remainingTasks: gameState.tasks.map(task => task.name),
+            stuckCount: playtestBot.currentRun.stuckCount,
+            doorsToggled: playtestBot.currentRun.doorsToggled,
+            barksUsed: playtestBot.currentRun.barksUsed,
+            ...extra
+        }
+    };
+
+    playtestBot.telemetry.runs.push(completedRun);
+    playtestBot.lastFinishedRun = completedRun;
+    playtestBot.currentRun = null;
+    playtestBot.objective = null;
+    playtestBot.route = null;
+    playtestBot.routeIndex = 0;
+    playtestBot.recoveryTimer = 0;
+    playtestBot.recoveryTarget = null;
+    playtestBot.lastMoveTarget = null;
+    playtestBot.lastRoutePreview = [];
+    playtestBot.lastTargetDoorName = null;
+    playtestBot.blockedObjectives = {};
+    playtestBot.doorActionCooldown = 0;
+    playtestBot.exitIntent = { toilet: false, relax: false };
+    clearBotControls();
+    updatePlaytestUI();
+}
+
+function togglePlaytestBot(forceActive) {
+    const nextState = typeof forceActive === 'boolean' ? forceActive : !playtestBot.active;
+    if (nextState === playtestBot.active) return;
+
+    playtestBot.active = nextState;
+    clearBotControls();
+    playtestBot.objective = null;
+    playtestBot.route = null;
+    playtestBot.routeIndex = 0;
+    playtestBot.recoveryTimer = 0;
+    playtestBot.recoveryTarget = null;
+    playtestBot.lastMoveTarget = null;
+    playtestBot.lastRoutePreview = [];
+    playtestBot.lastTargetDoorName = null;
+    playtestBot.blockedObjectives = {};
+    playtestBot.doorActionCooldown = 0;
+    playtestBot.exitIntent = { toilet: false, relax: false };
+
+    if (playtestBot.active) {
+        if (!gameState.isRunning) {
+            restartPlaytestRun();
+            return;
+        }
+        if (!playtestBot.currentRun) {
+            startPlaytestRun('toggle_on');
+        }
+        notifyPlayer('Playtest bot online.', 2.0);
+    } else {
+        recordPlaytestEvent('bot_paused');
+        notifyPlayer('Playtest bot paused.', 2.0);
+    }
+
+    updatePlaytestUI();
+}
+
+function cyclePlaytestSpeed() {
+    const currentIndex = PLAYTEST_SPEEDS.indexOf(playtestBot.timeScale);
+    const nextIndex = (currentIndex + 1) % PLAYTEST_SPEEDS.length;
+    playtestBot.timeScale = PLAYTEST_SPEEDS[nextIndex];
+    updatePlaytestUI();
+
+    if (typeof notifyPlayer === 'function') {
+        notifyPlayer(`Playtest speed ${playtestBot.timeScale}x`, 1.5);
+    }
+}
+
+function exportPlaytestData() {
+    const payload = buildPlaytestExportPayload();
+    const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `overstimulated-playtest-${Date.now()}.json`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+
+    if (typeof notifyPlayer === 'function') {
+        notifyPlayer('Playtest data exported.', 2.0);
+    }
+}
+
+function restartPlaytestRun() {
+    hideModal();
+    initGame();
+}
+
+function serializeDirectPlayerDoor(door) {
+    if (!door) return null;
+
+    const center = getDoorCenter(door);
+    const dadCenterX = gameState.dad.x + gameState.dad.width / 2;
+    const dadCenterY = gameState.dad.y + gameState.dad.height / 2;
+    const index = typeof door.index === 'number' ? door.index : DOORS.findIndex(entry => entry.name === door.name);
+
+    return {
+        index,
+        name: door.name,
+        open: !!door.open,
+        x: Math.round(center.x),
+        y: Math.round(center.y),
+        distance: Math.round(Math.hypot(dadCenterX - center.x, dadCenterY - center.y))
+    };
+}
+
+function serializeDirectPlayerTask(task) {
+    if (!task) return null;
+
+    const target = getTaskTargetPosition(task);
+    const dadCenterX = gameState.dad.x + gameState.dad.width / 2;
+    const dadCenterY = gameState.dad.y + gameState.dad.height / 2;
+
+    return {
+        id: task.id,
+        name: task.name,
+        location: task.location,
+        type: task.type,
+        progress: Number((task.progress || 0).toFixed(2)),
+        maxProgress: task.maxProgress || 0,
+        duration: task.duration || 0,
+        targetX: target ? Math.round(target.x) : null,
+        targetY: target ? Math.round(target.y) : null,
+        distance: target ? Math.round(Math.hypot(target.x - dadCenterX, target.y - dadCenterY)) : null
+    };
+}
+
+function getDirectPlayerSnapshot() {
+    if (typeof gameState === 'undefined') return null;
+
+    const dadCenterX = gameState.dad.x + gameState.dad.width / 2;
+    const dadCenterY = gameState.dad.y + gameState.dad.height / 2;
+    const roomKey = getRoomAt(dadCenterX, dadCenterY);
+    const nearbyTask = findNearbyTask();
+    const nearbyDoor = findNearbyDoor();
+    const relaxSpot = checkRelaxSpot(gameState.dad.x, gameState.dad.y);
+    const toiletSpot = checkToiletHiding(gameState.dad.x, gameState.dad.y);
+    const modal = document.getElementById('modal');
+
+    return {
+        ready: true,
+        day: gameState.day,
+        time: Number(gameState.time.toFixed(2)),
+        timePerDay: gameState.timePerDay,
+        overstimulation: Number(gameState.overstimulation.toFixed(2)),
+        isRunning: !!gameState.isRunning,
+        isRelaxing: !!gameState.isRelaxing,
+        isHidingInToilet: !!gameState.isHidingInToilet,
+        coffeeBuff: !!gameState.coffeeBuff,
+        coffeeProgress: Number(gameState.coffeeProgress.toFixed(2)),
+        barkCooldown: Number(gameState.barkCooldown.toFixed(2)),
+        sprintEnergy: Number(gameState.sprintergyLeft.toFixed(2)),
+        stats: {
+            tasksCompleted: gameState.stats.tasksCompleted,
+            peakStimulation: Number(gameState.stats.peakStimulation.toFixed(2)),
+            daysCompleted: gameState.stats.daysCompleted
+        },
+        dad: {
+            x: Math.round(gameState.dad.x),
+            y: Math.round(gameState.dad.y),
+            centerX: Math.round(dadCenterX),
+            centerY: Math.round(dadCenterY),
+            width: gameState.dad.width,
+            height: gameState.dad.height,
+            carrying: gameState.dad.carrying || null,
+            roomKey,
+            roomName: roomKey && ROOMS[roomKey] ? ROOMS[roomKey].name : null
+        },
+        tasks: gameState.tasks.map(serializeDirectPlayerTask).filter(Boolean),
+        nearbyTask: serializeDirectPlayerTask(nearbyTask),
+        nearbyDoor: serializeDirectPlayerDoor(nearbyDoor),
+        relaxSpot: relaxSpot ? { key: relaxSpot.key, type: relaxSpot.obj.type } : null,
+        toiletSpot: toiletSpot ? { canHide: !!toiletSpot.canHide, doorClosed: !!toiletSpot.doorClosed } : null,
+        nearCoffee: checkCoffeeMachine(gameState.dad.x, gameState.dad.y),
+        notification: gameState.notification ? {
+            message: gameState.notification.message,
+            timeLeft: Number(gameState.notification.timeLeft.toFixed(2))
+        } : null,
+        pois: {
+            livingRoom: { x: Math.round(WAYPOINTS.LIVING_ROOM.pixelX), y: Math.round(WAYPOINTS.LIVING_ROOM.pixelY) },
+            couch: getWorldObjectCenter('COUCH'),
+            bed: getWorldObjectCenter('BED'),
+            toilet: getWorldObjectCenter('TOILET'),
+            coffee: getWorldObjectCenter('COFFEE_MACHINE'),
+            sprinkler: { x: Math.round(POIS.SPRINKLER.x * TILE_SIZE), y: Math.round(POIS.SPRINKLER.y * TILE_SIZE) }
+        },
+        modal: {
+            visible: modal ? getComputedStyle(modal).display !== 'none' : false,
+            title: document.getElementById('modal-title') ? document.getElementById('modal-title').textContent : '',
+            text: document.getElementById('modal-text') ? document.getElementById('modal-text').innerText : ''
+        }
+    };
+}
+
+function getDirectPlayerRoutePlan(targetX, targetY) {
+    const dadCenterX = gameState.dad.x + gameState.dad.width / 2;
+    const dadCenterY = gameState.dad.y + gameState.dad.height / 2;
+    const directDistance = Math.hypot(targetX - dadCenterX, targetY - dadCenterY);
+    const canGoDirect = directDistance < 30 || hasLineOfSight(dadCenterX, dadCenterY, targetX, targetY, gameState.dad.width);
+
+    if (canGoDirect) {
+        return {
+            directDistance: Math.round(directDistance),
+            canGoDirect: true,
+            route: [],
+            nextTarget: { x: Math.round(targetX), y: Math.round(targetY), waypointName: null, label: 'Direct' },
+            targetDoor: null
+        };
+    }
+
+    const route = findBestWaypointRoute(dadCenterX, dadCenterY, targetX, targetY, {
+        bodySize: gameState.dad.width,
+        routeContext: { canUseDoors: true }
+    });
+    if (!route || !route.waypoints || route.waypoints.length === 0) {
+        return {
+            directDistance: Math.round(directDistance),
+            canGoDirect: false,
+            route: [],
+            nextTarget: { x: Math.round(targetX), y: Math.round(targetY), waypointName: null, label: 'Direct' },
+            targetDoor: null
+        };
+    }
+
+    let nextTarget = { x: Math.round(targetX), y: Math.round(targetY), waypointName: null, label: 'Direct' };
+    for (const waypointName of route.waypoints) {
+        const waypoint = WAYPOINTS[waypointName];
+        if (!waypoint) continue;
+
+        if (hasReachedWaypoint(waypointName, dadCenterX, dadCenterY, gameState.dad.width)) {
+            continue;
+        }
+
+        nextTarget = {
+            x: Math.round(waypoint.pixelX),
+            y: Math.round(waypoint.pixelY),
+            waypointName,
+            label: describePlaytestWaypoint(waypointName)
+        };
+        break;
+    }
+
+    const targetDoor = serializeDirectPlayerDoor(getDoorForWaypointName(nextTarget.waypointName));
+    return {
+        directDistance: Math.round(directDistance),
+        canGoDirect: false,
+        route: route.waypoints.map(describePlaytestWaypoint),
+        nextTarget,
+        targetDoor
+    };
+}
+
+function getDirectPlayerRecoveryPoint(targetX, targetY) {
+    const dadCenterX = gameState.dad.x + gameState.dad.width / 2;
+    const dadCenterY = gameState.dad.y + gameState.dad.height / 2;
+    const angle = Math.atan2(targetY - dadCenterY, targetX - dadCenterX);
+    const candidates = [
+        { x: dadCenterX + Math.cos(angle + Math.PI / 2) * 72, y: dadCenterY + Math.sin(angle + Math.PI / 2) * 72 },
+        { x: dadCenterX + Math.cos(angle - Math.PI / 2) * 72, y: dadCenterY + Math.sin(angle - Math.PI / 2) * 72 },
+        { x: dadCenterX - Math.cos(angle) * 56, y: dadCenterY - Math.sin(angle) * 56 }
+    ];
+
+    for (const candidate of candidates) {
+        const topLeftX = candidate.x - gameState.dad.width / 2;
+        const topLeftY = candidate.y - gameState.dad.height / 2;
+        if (!canMoveTo(topLeftX, topLeftY, gameState.dad.width, gameState.dad.height)) continue;
+        if (!canPassDoor(topLeftX, topLeftY, gameState.dad.width, gameState.dad.height)) continue;
+        if (!hasLineOfSight(dadCenterX, dadCenterY, candidate.x, candidate.y, gameState.dad.width)) continue;
+
+        return { x: Math.round(candidate.x), y: Math.round(candidate.y) };
+    }
+
+    return null;
+}
+
+function setDirectPlayerControls(state = {}) {
+    input.up = !!state.up;
+    input.down = !!state.down;
+    input.left = !!state.left;
+    input.right = !!state.right;
+    input.sprinting = !!state.sprinting;
+    if (state.actionHeld) {
+        if (!input.actionHeld) {
+            input.actionStartTime = Date.now();
+        }
+        input.actionHeld = true;
+    } else {
+        input.actionHeld = false;
+    }
+}
+
+function tapDirectPlayerControl(kind = 'action') {
+    if (kind === 'bark') {
+        input.bark = true;
+    } else if (kind === 'interact') {
+        input.interact = true;
+    } else {
+        input.actionHeld = false;
+        input.action = true;
+    }
+}
+
+function restartDirectPlayerRun() {
+    playtestBot.active = false;
+    hideModal();
+    clearBotControls();
+    initGame();
+    playtestBot.active = false;
+    updatePlaytestUI();
+}
+
+window.directPlayerApi = {
+    getSnapshot: getDirectPlayerSnapshot,
+    planRoute: getDirectPlayerRoutePlan,
+    getRecoveryPoint: getDirectPlayerRecoveryPoint,
+    setControls: setDirectPlayerControls,
+    tapControl: tapDirectPlayerControl,
+    clearControls: clearBotControls,
+    restartRun: restartDirectPlayerRun,
+    exportTelemetry: buildPlaytestExportPayload
+};
+
+function scoreTaskForPlaytest(task) {
+    const target = getTaskTargetPosition(task);
+    if (!target) return -Infinity;
+
+    const dadCenterX = gameState.dad.x + gameState.dad.width / 2;
+    const dadCenterY = gameState.dad.y + gameState.dad.height / 2;
+    const distancePenalty = Math.hypot(target.x - dadCenterX, target.y - dadCenterY) / 30;
+
+    let score = task.type === 'fetch' ? 120 : task.type === 'coverage' ? 95 : 80;
+
+    if (task.name === 'MOVE SPRINKLER') score += 90;
+    if (task.name === 'ROUND UP CHICKENS') score += 80;
+    if (task.name === 'GET BEER') score += 65;
+    if (task.name.startsWith('Clean poop')) score += 45 + task.maxProgress * 2;
+    if (task.name.startsWith('Collect toys')) score += 35 + task.maxProgress;
+    if (task.location === 'Baby') score -= 15;
+    if (gameState.overstimulation > 75 && task.type === 'hold') score -= 20;
+
+    return score - distancePenalty;
+}
+
+function choosePlaytestTask() {
+    let bestTask = null;
+    let bestScore = -Infinity;
+
+    for (const task of gameState.tasks) {
+        const score = scoreTaskForPlaytest(task);
+        if (score > bestScore) {
+            bestScore = score;
+            bestTask = task;
+        }
+    }
+
+    return bestTask;
+}
+
+function getPlaytestObjectiveKey(objective) {
+    if (!objective) return null;
+    if (objective.type === 'task') return `task:${objective.taskId}`;
+    return `${objective.type}:${objective.label}`;
+}
+
+function isPlaytestObjectiveBlocked(objective) {
+    const key = getPlaytestObjectiveKey(objective);
+    if (!key) return false;
+    const blockedUntil = playtestBot.blockedObjectives[key];
+    if (!blockedUntil) return false;
+    if (blockedUntil <= gameState.time) {
+        delete playtestBot.blockedObjectives[key];
+        return false;
+    }
+    return true;
+}
+
+function markPlaytestObjectiveBlocked(objective, duration = 25) {
+    const key = getPlaytestObjectiveKey(objective);
+    if (!key) return;
+    playtestBot.blockedObjectives[key] = gameState.time + duration;
+    recordPlaytestEvent('objective_blocked', {
+        label: objective.label,
+        objectiveType: objective.type,
+        blockedUntil: Number((gameState.time + duration).toFixed(2))
+    });
+}
+
+function buildPlaytestRoute(targetX, targetY) {
+    const dadCenterX = gameState.dad.x + gameState.dad.width / 2;
+    const dadCenterY = gameState.dad.y + gameState.dad.height / 2;
+    const route = findBestWaypointRoute(dadCenterX, dadCenterY, targetX, targetY, {
+        bodySize: gameState.dad.width,
+        routeContext: { canUseDoors: true }
+    });
+    if (!route || !route.waypoints || route.waypoints.length === 0) return null;
+
+    return {
+        targetX,
+        targetY,
+        builtAt: gameState.time,
+        waypoints: route.waypoints
+    };
+}
+
+function getPlaytestMoveTarget(targetX, targetY) {
+    const dadCenterX = gameState.dad.x + gameState.dad.width / 2;
+    const dadCenterY = gameState.dad.y + gameState.dad.height / 2;
+    const directDistance = Math.hypot(targetX - dadCenterX, targetY - dadCenterY);
+
+    if (directDistance < 30 || hasLineOfSight(dadCenterX, dadCenterY, targetX, targetY, gameState.dad.width)) {
+        playtestBot.route = null;
+        playtestBot.routeIndex = 0;
+        return { x: targetX, y: targetY, waypointName: null };
+    }
+
+    const needsNewRoute = !playtestBot.route ||
+        Math.hypot(playtestBot.route.targetX - targetX, playtestBot.route.targetY - targetY) > 5 ||
+        gameState.time - playtestBot.route.builtAt > 2.5;
+
+    if (needsNewRoute) {
+        playtestBot.route = buildPlaytestRoute(targetX, targetY);
+        playtestBot.routeIndex = 0;
+    }
+
+    if (!playtestBot.route) {
+        return { x: targetX, y: targetY, waypointName: null };
+    }
+
+    while (playtestBot.routeIndex < playtestBot.route.waypoints.length) {
+        const waypointName = playtestBot.route.waypoints[playtestBot.routeIndex];
+        const waypoint = WAYPOINTS[waypointName];
+        if (!waypoint) {
+            playtestBot.routeIndex++;
+            continue;
+        }
+
+        if (hasReachedWaypoint(waypointName, dadCenterX, dadCenterY, gameState.dad.width)) {
+            playtestBot.routeIndex++;
+            continue;
+        }
+
+        return { x: waypoint.pixelX, y: waypoint.pixelY, waypointName };
+    }
+
+    return { x: targetX, y: targetY, waypointName: null };
+}
+
+function setPlaytestMovementToward(targetX, targetY) {
+    const dadCenterX = gameState.dad.x + gameState.dad.width / 2;
+    const dadCenterY = gameState.dad.y + gameState.dad.height / 2;
+    const dx = targetX - dadCenterX;
+    const dy = targetY - dadCenterY;
+    const distance = Math.hypot(dx, dy);
+    const deadZone = 6;
+
+    input.left = dx < -deadZone;
+    input.right = dx > deadZone;
+    input.up = dy < -deadZone;
+    input.down = dy > deadZone;
+    input.sprinting = distance > 220 && gameState.sprintergyLeft > 25;
+}
+
+function cachePlaytestMoveTarget(moveTarget) {
+    playtestBot.lastMoveTarget = moveTarget;
+    playtestBot.lastRoutePreview = playtestBot.route
+        ? playtestBot.route.waypoints.slice(playtestBot.routeIndex, playtestBot.routeIndex + 5)
+        : [];
+    const targetDoor = getDoorForWaypointName(moveTarget ? moveTarget.waypointName : null);
+    playtestBot.lastTargetDoorName = targetDoor ? targetDoor.name : null;
+    return targetDoor;
+}
+
+function movePlaytestToward(targetX, targetY) {
+    const dadCenterX = gameState.dad.x + gameState.dad.width / 2;
+    const dadCenterY = gameState.dad.y + gameState.dad.height / 2;
+    const moveTarget = getPlaytestMoveTarget(targetX, targetY);
+    const targetDoor = cachePlaytestMoveTarget(moveTarget);
+
+    setPlaytestMovementToward(moveTarget.x, moveTarget.y);
+
+    if (targetDoor && !targetDoor.open) {
+        const doorCenter = getDoorCenter(targetDoor);
+        if (Math.hypot(dadCenterX - doorCenter.x, dadCenterY - doorCenter.y) < 72) {
+            if (playtestBot.doorActionCooldown <= 0) {
+                input.action = true;
+                playtestBot.doorActionCooldown = 0.35;
+            }
+        }
+    }
+
+    return { moveTarget, targetDoor };
+}
+
+function queuePlaytestRecovery(targetX, targetY) {
+    const dadCenterX = gameState.dad.x + gameState.dad.width / 2;
+    const dadCenterY = gameState.dad.y + gameState.dad.height / 2;
+    const angle = Math.atan2(targetY - dadCenterY, targetX - dadCenterX);
+    const candidates = [
+        { x: dadCenterX + Math.cos(angle + Math.PI / 2) * 72, y: dadCenterY + Math.sin(angle + Math.PI / 2) * 72 },
+        { x: dadCenterX + Math.cos(angle - Math.PI / 2) * 72, y: dadCenterY + Math.sin(angle - Math.PI / 2) * 72 },
+        { x: dadCenterX - Math.cos(angle) * 56, y: dadCenterY - Math.sin(angle) * 56 }
+    ];
+
+    for (const candidate of candidates) {
+        const topLeftX = candidate.x - gameState.dad.width / 2;
+        const topLeftY = candidate.y - gameState.dad.height / 2;
+        if (!canMoveTo(topLeftX, topLeftY, gameState.dad.width, gameState.dad.height)) {
+            continue;
+        }
+        if (!canPassDoor(topLeftX, topLeftY, gameState.dad.width, gameState.dad.height)) {
+            continue;
+        }
+        if (!hasLineOfSight(dadCenterX, dadCenterY, candidate.x, candidate.y, gameState.dad.width)) {
+            continue;
+        }
+
+        playtestBot.recoveryTimer = 0.45;
+        playtestBot.recoveryTarget = candidate;
+        recordPlaytestEvent('recovery', { x: Math.round(candidate.x), y: Math.round(candidate.y) });
+        return true;
+    }
+
+    return false;
+}
+
+function getPlaytestObjective() {
+    const task = choosePlaytestTask();
+    if (task) {
+        const target = getTaskTargetPosition(task);
+        if (target) {
+            const taskObjective = {
+                type: 'task',
+                label: `Task: ${task.name}`,
+                taskId: task.id,
+                taskType: task.type,
+                targetX: target.x,
+                targetY: target.y
+            };
+            if (!isPlaytestObjectiveBlocked(taskObjective)) {
+                return taskObjective;
+            }
+        }
+    }
+
+    if (gameState.overstimulation >= 82) {
+        const toilet = getWorldObjectCenter('TOILET');
+        if (toilet) {
+            const toiletObjective = { type: 'toilet', label: 'Hide in toilet', targetX: toilet.x, targetY: toilet.y };
+            if (!isPlaytestObjectiveBlocked(toiletObjective)) {
+                return toiletObjective;
+            }
+        }
+    }
+
+    if (gameState.overstimulation >= 62) {
+        const couch = getWorldObjectCenter('COUCH') || getWorldObjectCenter('BED');
+        if (couch) {
+            const relaxObjective = { type: 'relax', label: 'Take a breather', targetX: couch.x, targetY: couch.y };
+            if (!isPlaytestObjectiveBlocked(relaxObjective)) {
+                return relaxObjective;
+            }
+        }
+    }
+
+    if (playtestBot.currentRun && !playtestBot.currentRun.coffeeUsed && !gameState.coffeeBuff && gameState.time < 110 && gameState.overstimulation < 68 && gameState.tasks.length <= 2) {
+        const coffee = getWorldObjectCenter('COFFEE_MACHINE');
+        if (coffee) {
+            const coffeeObjective = { type: 'coffee', label: 'Brew coffee', targetX: coffee.x, targetY: coffee.y };
+            if (!isPlaytestObjectiveBlocked(coffeeObjective)) {
+                return coffeeObjective;
+            }
+        }
+    }
+
+    return {
+        type: 'idle',
+        label: 'Stand by in living room',
+        targetX: WAYPOINTS.LIVING_ROOM.pixelX,
+        targetY: WAYPOINTS.LIVING_ROOM.pixelY
+    };
+}
+
+function isPlaytestObjectiveValid(objective) {
+    if (!objective) return false;
+
+    if (objective.type === 'task') {
+        return gameState.tasks.some(task => task.id === objective.taskId);
+    }
+
+    if (objective.type === 'coffee') {
+        return playtestBot.currentRun && !playtestBot.currentRun.coffeeUsed && !gameState.coffeeBuff;
+    }
+
+    return true;
+}
+
+function setPlaytestObjective(objective) {
+    const current = playtestBot.objective;
+    const sameObjective = current && objective &&
+        current.type === objective.type &&
+        current.taskId === objective.taskId &&
+        current.label === objective.label;
+
+    if (sameObjective) return;
+
+    playtestBot.objective = objective;
+    playtestBot.objectiveStartedAt = gameState.time;
+    playtestBot.route = null;
+    playtestBot.routeIndex = 0;
+    playtestBot.recoveryTimer = 0;
+    playtestBot.recoveryTarget = null;
+    playtestBot.lastMoveTarget = null;
+    playtestBot.lastRoutePreview = [];
+    playtestBot.lastTargetDoorName = null;
+
+    if (objective && playtestBot.currentRun) {
+        playtestBot.currentRun.objectiveChanges++;
+        recordPlaytestEvent('objective', {
+            label: objective.label,
+            objectiveType: objective.type,
+            targetX: Math.round(objective.targetX),
+            targetY: Math.round(objective.targetY)
+        });
+    }
+}
+
+function samplePlaytestRun(dt) {
+    if (!playtestBot.currentRun) return;
+
+    for (const task of gameState.tasks) {
+        if (!playtestBot.knownTaskIds.includes(task.id)) {
+            playtestBot.knownTaskIds.push(task.id);
+            playtestBot.currentRun.spawnedTasks.push({
+                time: Number(gameState.time.toFixed(2)),
+                day: gameState.day,
+                id: task.id,
+                name: task.name,
+                location: task.location,
+                type: task.type
+            });
+            recordPlaytestEvent('task_spawned', { name: task.name, location: task.location, taskType: task.type });
+        }
+    }
+
+    playtestBot.sampleTimer -= dt;
+    if (playtestBot.sampleTimer > 0) return;
+    playtestBot.sampleTimer = 5;
+
+    playtestBot.currentRun.samples.push({
+        time: Number(gameState.time.toFixed(2)),
+        day: gameState.day,
+        stress: Number(gameState.overstimulation.toFixed(1)),
+        tasksRemaining: gameState.tasks.length,
+        objective: playtestBot.objective ? playtestBot.objective.label : 'Idle',
+        room: getRoomAt(gameState.dad.x + gameState.dad.width / 2, gameState.dad.y + gameState.dad.height / 2),
+        nextMove: playtestBot.lastMoveTarget ? describePlaytestWaypoint(playtestBot.lastMoveTarget.waypointName) : 'Direct',
+        recovery: playtestBot.recoveryTimer > 0,
+        x: Math.round(gameState.dad.x),
+        y: Math.round(gameState.dad.y)
+    });
+}
+
+function updatePlaytestBot(dt) {
+    playtestBot.doorActionCooldown = Math.max(0, playtestBot.doorActionCooldown - dt);
+    playtestBot.uiTimer -= dt;
+    if (playtestBot.uiTimer <= 0) {
+        playtestBot.uiTimer = 0.25;
+        updatePlaytestUI();
+    }
+
+    if (!playtestBot.active) return;
+    if (!gameState.isRunning) {
+        clearBotControls();
+        return;
+    }
+
+    if (!playtestBot.currentRun) {
+        startPlaytestRun('resume');
+    }
+
+    input.action = false;
+    input.bark = false;
+    input.interact = false;
+    input.actionHeld = false;
+
+    if (isModalVisible()) {
+        clearBotControls();
+        playtestBot.modalContinueDelay -= dt;
+        if (gameState.isRunning && playtestBot.modalContinueDelay <= 0) {
+            const modalButton = document.getElementById('modal-button');
+            if (modalButton) {
+                modalButton.click();
+            }
+            playtestBot.modalContinueDelay = 0.8;
+        }
+        return;
+    }
+
+    playtestBot.modalContinueDelay = 0.8;
+    samplePlaytestRun(dt);
+
+    if (playtestBot.currentRun && gameState.coffeeBuff) {
+        playtestBot.currentRun.coffeeUsed = true;
+    }
+
+    if (gameState.isHidingInToilet) {
+        clearBotControls();
+        cachePlaytestMoveTarget({ x: playtestBot.objective ? playtestBot.objective.targetX : gameState.dad.x, y: playtestBot.objective ? playtestBot.objective.targetY : gameState.dad.y, waypointName: null });
+        if (gameState.overstimulation <= 38 || gameState.time - playtestBot.objectiveStartedAt > 8) {
+            input.action = true;
+            if (!playtestBot.exitIntent.toilet) {
+                recordPlaytestEvent('toilet_exit');
+                playtestBot.exitIntent.toilet = true;
+            }
+        }
+        return;
+    }
+    playtestBot.exitIntent.toilet = false;
+
+    if (gameState.isRelaxing) {
+        clearBotControls();
+        cachePlaytestMoveTarget({ x: playtestBot.objective ? playtestBot.objective.targetX : gameState.dad.x, y: playtestBot.objective ? playtestBot.objective.targetY : gameState.dad.y, waypointName: null });
+        if (gameState.overstimulation <= 32 || (gameState.tasks.length > 0 && gameState.time - playtestBot.objectiveStartedAt > 5)) {
+            input.action = true;
+            if (!playtestBot.exitIntent.relax) {
+                recordPlaytestEvent('relax_exit');
+                playtestBot.exitIntent.relax = true;
+            }
+        }
+        return;
+    }
+    playtestBot.exitIntent.relax = false;
+
+    if (playtestBot.recoveryTimer > 0 && playtestBot.recoveryTarget) {
+        playtestBot.recoveryTimer = Math.max(0, playtestBot.recoveryTimer - dt);
+        cachePlaytestMoveTarget({ x: playtestBot.recoveryTarget.x, y: playtestBot.recoveryTarget.y, waypointName: null });
+        const recoveryDistance = Math.hypot(
+            playtestBot.recoveryTarget.x - (gameState.dad.x + gameState.dad.width / 2),
+            playtestBot.recoveryTarget.y - (gameState.dad.y + gameState.dad.height / 2)
+        );
+        if (recoveryDistance > 12) {
+            setPlaytestMovementToward(playtestBot.recoveryTarget.x, playtestBot.recoveryTarget.y);
+        } else {
+            clearBotControls();
+        }
+        if (playtestBot.recoveryTimer > 0 && recoveryDistance > 12) {
+            return;
+        }
+        playtestBot.recoveryTimer = 0;
+        playtestBot.recoveryTarget = null;
+    }
+
+    const candidateObjective = getPlaytestObjective();
+    const needsRefresh = !isPlaytestObjectiveValid(playtestBot.objective) ||
+        !playtestBot.objective ||
+        (candidateObjective.type === 'toilet' && playtestBot.objective.type !== 'toilet') ||
+        (candidateObjective.type === 'task' && playtestBot.objective.type !== 'task') ||
+        (candidateObjective.type === 'task' && playtestBot.objective.type === 'task' && candidateObjective.taskId !== playtestBot.objective.taskId && gameState.time - playtestBot.objectiveStartedAt > 3) ||
+        (candidateObjective.type !== 'idle' && playtestBot.objective.type === 'idle');
+
+    if (needsRefresh) {
+        setPlaytestObjective(candidateObjective);
+    }
+
+    if (!playtestBot.objective) return;
+
+    const dadCenterX = gameState.dad.x + gameState.dad.width / 2;
+    const dadCenterY = gameState.dad.y + gameState.dad.height / 2;
+    const distanceToGoal = Math.hypot(playtestBot.objective.targetX - dadCenterX, playtestBot.objective.targetY - dadCenterY);
+    const nearbyDoor = findNearbyDoor();
+    let activeDoor = null;
+
+    if (playtestBot.objective.type === 'task') {
+        const task = gameState.tasks.find(entry => entry.id === playtestBot.objective.taskId);
+        if (!task) {
+            setPlaytestObjective(null);
+            return;
+        }
+
+        const nearbyTask = findNearbyTask();
+        if (nearbyTask && nearbyTask.id === task.id) {
+            clearBotControls();
+            cachePlaytestMoveTarget({ x: playtestBot.objective.targetX, y: playtestBot.objective.targetY, waypointName: null });
+            if (task.type === 'fetch') {
+                input.action = true;
+            } else {
+                input.actionHeld = true;
+            }
+        } else {
+            activeDoor = movePlaytestToward(playtestBot.objective.targetX, playtestBot.objective.targetY).targetDoor;
+        }
+    } else if (playtestBot.objective.type === 'coffee') {
+        if (checkCoffeeMachine(gameState.dad.x, gameState.dad.y)) {
+            clearBotControls();
+            cachePlaytestMoveTarget({ x: playtestBot.objective.targetX, y: playtestBot.objective.targetY, waypointName: null });
+            input.actionHeld = true;
+        } else {
+            activeDoor = movePlaytestToward(playtestBot.objective.targetX, playtestBot.objective.targetY).targetDoor;
+        }
+    } else if (playtestBot.objective.type === 'toilet') {
+        if (distanceToGoal < 55) {
+            clearBotControls();
+            cachePlaytestMoveTarget({ x: playtestBot.objective.targetX, y: playtestBot.objective.targetY, waypointName: null });
+            input.action = true;
+            recordPlaytestEvent('toilet_enter');
+        } else {
+            activeDoor = movePlaytestToward(playtestBot.objective.targetX, playtestBot.objective.targetY).targetDoor;
+        }
+    } else if (playtestBot.objective.type === 'relax') {
+        const relaxSpot = checkRelaxSpot(gameState.dad.x, gameState.dad.y);
+        if (relaxSpot) {
+            clearBotControls();
+            cachePlaytestMoveTarget({ x: playtestBot.objective.targetX, y: playtestBot.objective.targetY, waypointName: null });
+            input.action = true;
+        } else {
+            activeDoor = movePlaytestToward(playtestBot.objective.targetX, playtestBot.objective.targetY).targetDoor;
+        }
+    } else if (distanceToGoal > 60) {
+        activeDoor = movePlaytestToward(playtestBot.objective.targetX, playtestBot.objective.targetY).targetDoor;
+    } else {
+        clearBotControls();
+        cachePlaytestMoveTarget({ x: playtestBot.objective.targetX, y: playtestBot.objective.targetY, waypointName: null });
+    }
+
+    const adultsNearby = [gameState.npcStates.wife, gameState.npcStates.housemate].some(npc => npc && Math.hypot(npc.x - dadCenterX, npc.y - dadCenterY) < 140);
+    if (adultsNearby && gameState.tasks.length >= 3 && gameState.barkCooldown <= 0 && (!playtestBot.currentRun.lastBarkAt || gameState.time - playtestBot.currentRun.lastBarkAt > 10)) {
+        input.bark = true;
+        playtestBot.currentRun.lastBarkAt = gameState.time;
+        playtestBot.currentRun.barksUsed++;
+        recordPlaytestEvent('bark');
+    }
+
+    if (!playtestBot.lastPosition) {
+        playtestBot.lastPosition = { x: dadCenterX, y: dadCenterY, checkIn: 1.2 };
+        return;
+    }
+
+    playtestBot.lastPosition.checkIn -= dt;
+    if (playtestBot.lastPosition.checkIn <= 0) {
+        const movedDistance = Math.hypot(dadCenterX - playtestBot.lastPosition.x, dadCenterY - playtestBot.lastPosition.y);
+        if (movedDistance < 8 && playtestBot.objective && distanceToGoal > 50) {
+            playtestBot.stuckCounter++;
+            playtestBot.currentRun.stuckCount++;
+            const roomKey = getRoomAt(dadCenterX, dadCenterY);
+            recordPlaytestEvent('stuck', {
+                objective: playtestBot.objective.label,
+                count: playtestBot.stuckCounter,
+                x: Math.round(dadCenterX),
+                y: Math.round(dadCenterY),
+                room: roomKey ? ROOMS[roomKey].name : 'Unknown'
+            });
+            const relevantDoor = activeDoor || (playtestBot.lastMoveTarget ? getDoorForWaypointName(playtestBot.lastMoveTarget.waypointName) : null) || nearbyDoor;
+            if (relevantDoor && !relevantDoor.open && playtestBot.doorActionCooldown <= 0) {
+                input.action = true;
+                playtestBot.doorActionCooldown = 0.35;
+            }
+            if (playtestBot.stuckCounter >= 2) {
+                playtestBot.route = null;
+                queuePlaytestRecovery(playtestBot.objective.targetX, playtestBot.objective.targetY);
+            }
+            if (playtestBot.stuckCounter >= 5) {
+                markPlaytestObjectiveBlocked(playtestBot.objective);
+                setPlaytestObjective(null);
+                playtestBot.stuckCounter = 0;
+            }
+        } else {
+            playtestBot.stuckCounter = 0;
+        }
+
+        playtestBot.lastPosition = { x: dadCenterX, y: dadCenterY, checkIn: 1.2 };
+    }
 }
 
 function getPOIByName(name) {
@@ -673,6 +2073,8 @@ function update(deltaTime) {
         return;
     }
 
+    updatePlaytestBot(effectiveDeltaTime);
+
     // Dad movement (faster base speed)
     // If relaxing, don't allow movement
     if (!gameState.isRelaxing && !gameState.isHidingInToilet) {
@@ -795,8 +2197,15 @@ function update(deltaTime) {
         const relaxSpot = checkRelaxSpot(gameState.dad.x, gameState.dad.y);
         const toiletSpot = checkToiletHiding(gameState.dad.x, gameState.dad.y);
         const mowerSpot = checkMower(gameState.dad.x, gameState.dad.y);
-        // Priority order: tasks > doors > special interactions
-        if (nearbyTask) {
+        // Priority order: exiting a special state > tasks > entering a special state > doors
+        if (gameState.isRelaxing) {
+            gameState.isRelaxing = false;
+            gameState.relaxSpot = null;
+        }
+        else if (gameState.isHidingInToilet) {
+            gameState.isHidingInToilet = false;
+        }
+        else if (nearbyTask) {
             if (nearbyTask.type === 'fetch') {
                 completeTask(nearbyTask.id);
             } else if (nearbyTask.type === 'coverage') {
@@ -814,21 +2223,17 @@ function update(deltaTime) {
                 }
             }
         }
-        else if (nearbyDoor) {
-            toggleDoor(nearbyDoor.index);
-        }
         // Relax spot interaction
         else if (relaxSpot && !gameState.isRelaxing) {
             gameState.isRelaxing = true;
             gameState.relaxSpot = relaxSpot.key;
         }
-        else if (gameState.isRelaxing) {
-            gameState.isRelaxing = false;
-            gameState.relaxSpot = null;
-        }
         // Toilet hiding
         else if (toiletSpot && toiletSpot.canHide) {
             gameState.isHidingInToilet = !gameState.isHidingInToilet;
+        }
+        else if (nearbyDoor) {
+            toggleDoor(nearbyDoor.index);
         }
         // Mower pickup/drop
         else if (mowerSpot) {
@@ -1036,10 +2441,11 @@ function pushOutOfSolids(entity, width, height) {
                 let hasOpenDoor = false;
                 for (let door of DOORS) {
                     if (!door.open) continue;
-                    const doorX = door.x * TILE_SIZE;
-                    const doorY = door.y * TILE_SIZE;
-                    const doorW = door.w * TILE_SIZE;
-                    const doorH = door.h * TILE_SIZE;
+                    const doorRect = getDoorCollisionRect(door);
+                    const doorX = doorRect.x;
+                    const doorY = doorRect.y;
+                    const doorW = doorRect.w;
+                    const doorH = doorRect.h;
                     if (doorX < wallX + wallW && doorX + doorW > wallX &&
                         doorY < wallY + wallH && doorY + doorH > wallY &&
                         entity.x < doorX + doorW && entity.x + width > doorX &&
@@ -1068,10 +2474,11 @@ function pushOutOfSolids(entity, width, height) {
         // Push out of closed doors
         for (let door of DOORS) {
             if (door.open) continue;
-            const doorX = door.x * TILE_SIZE;
-            const doorY = door.y * TILE_SIZE;
-            const doorW = door.w * TILE_SIZE;
-            const doorH = door.h * TILE_SIZE;
+            const doorRect = getDoorCollisionRect(door);
+            const doorX = doorRect.x;
+            const doorY = doorRect.y;
+            const doorW = doorRect.w;
+            const doorH = doorRect.h;
 
             if (entity.x < doorX + doorW && entity.x + width > doorX &&
                 entity.y < doorY + doorH && entity.y + height > doorY) {
@@ -1097,12 +2504,21 @@ function pushOutOfSolids(entity, width, height) {
 function distBetween(a, b) { return Math.hypot(a.x - b.x, a.y - b.y); }
 
 function getRoomAt(px, py) {
+    let bestMatch = null;
+    let bestArea = Infinity;
+
     for (const [key, room] of Object.entries(ROOMS)) {
         const rx = room.x * TILE_SIZE, ry = room.y * TILE_SIZE;
         const rw = room.w * TILE_SIZE, rh = room.h * TILE_SIZE;
-        if (px >= rx && px < rx + rw && py >= ry && py < ry + rh) return key;
+        if (px >= rx && px < rx + rw && py >= ry && py < ry + rh) {
+            const area = rw * rh;
+            if (area < bestArea) {
+                bestArea = area;
+                bestMatch = key;
+            }
+        }
     }
-    return null;
+    return bestMatch;
 }
 
 function randomPointInRoom(roomKey) {
@@ -1353,6 +2769,27 @@ function removeEntity(ent) {
     if (idx >= 0) gameState.entities.splice(idx, 1);
 }
 
+function getDoorCollisionRect(door) {
+    const centerX = (door.x + door.w / 2) * TILE_SIZE;
+    const centerY = (door.y + door.h / 2) * TILE_SIZE;
+    const minThickness = 14;
+    const minSpan = DAD_HITBOX_SIZE + 10;
+
+    const width = door.orient === 'v'
+        ? Math.max(door.w * TILE_SIZE, minThickness)
+        : Math.max(door.w * TILE_SIZE, minSpan);
+    const height = door.orient === 'v'
+        ? Math.max(door.h * TILE_SIZE, minSpan)
+        : Math.max(door.h * TILE_SIZE, minThickness);
+
+    return {
+        x: centerX - width / 2,
+        y: centerY - height / 2,
+        w: width,
+        h: height
+    };
+}
+
 function canMoveTo(x, y, width, height) {
     // Check against walls
     for (let wall of WALLS) {
@@ -1370,10 +2807,11 @@ function canMoveTo(x, y, width, height) {
             for (let door of DOORS) {
                 if (!door.open) continue;
 
-                const doorX = door.x * TILE_SIZE;
-                const doorY = door.y * TILE_SIZE;
-                const doorW = door.w * TILE_SIZE;
-                const doorH = door.h * TILE_SIZE;
+                const doorRect = getDoorCollisionRect(door);
+                const doorX = doorRect.x;
+                const doorY = doorRect.y;
+                const doorW = doorRect.w;
+                const doorH = doorRect.h;
 
                 // Door must overlap both the wall AND the character
                 if (doorX < wallX + wallW && doorX + doorW > wallX &&
@@ -1397,10 +2835,11 @@ function canMoveTo(x, y, width, height) {
 function canPassDoor(px, py, w, h) {
     for (let door of DOORS) {
         if (door.open) continue; // If open, ignore collision
-        const dx = door.x * TILE_SIZE;
-        const dy = door.y * TILE_SIZE;
-        const dw = door.w * TILE_SIZE;
-        const dh = door.h * TILE_SIZE;
+        const doorRect = getDoorCollisionRect(door);
+        const dx = doorRect.x;
+        const dy = doorRect.y;
+        const dw = doorRect.w;
+        const dh = doorRect.h;
 
         if (px < dx + dw && px + w > dx && py < dy + dh && py + h > dy) {
             return false;
@@ -1414,10 +2853,11 @@ function findBlockingDoor(x, y, width, height) {
     for (let i = 0; i < DOORS.length; i++) {
         const door = DOORS[i];
         if (door.open) continue;
-        const doorX = door.x * TILE_SIZE;
-        const doorY = door.y * TILE_SIZE;
-        const doorW = door.w * TILE_SIZE;
-        const doorH = door.h * TILE_SIZE;
+        const doorRect = getDoorCollisionRect(door);
+        const doorX = doorRect.x;
+        const doorY = doorRect.y;
+        const doorW = doorRect.w;
+        const doorH = doorRect.h;
 
         if (x < doorX + doorW && x + width > doorX &&
             y < doorY + doorH && y + height > doorY) {
@@ -1440,10 +2880,11 @@ function isNpcNearDoor(npc, doorIndex, threshold) {
 // Check if NPC has moved past a door (no longer overlapping it)
 function isNpcPastDoor(npc, doorIndex, width, height) {
     const door = DOORS[doorIndex];
-    const doorX = door.x * TILE_SIZE;
-    const doorY = door.y * TILE_SIZE;
-    const doorW = door.w * TILE_SIZE;
-    const doorH = door.h * TILE_SIZE;
+    const doorRect = getDoorCollisionRect(door);
+    const doorX = doorRect.x;
+    const doorY = doorRect.y;
+    const doorW = doorRect.w;
+    const doorH = doorRect.h;
 
     return !(npc.x < doorX + doorW && npc.x + width > doorX &&
              npc.y < doorY + doorH && npc.y + height > doorY);
@@ -1509,6 +2950,17 @@ function completeTask(taskId) {
     const taskIndex = gameState.tasks.findIndex(t => t.id === taskId);
     if (taskIndex > -1) {
         const task = gameState.tasks[taskIndex];
+        recordPlaytestEvent('task_completed', { id: task.id, name: task.name, location: task.location, taskType: task.type });
+        if (playtestBot.currentRun) {
+            playtestBot.currentRun.completedTasks.push({
+                time: Number(gameState.time.toFixed(2)),
+                day: gameState.day,
+                id: task.id,
+                name: task.name,
+                location: task.location,
+                type: task.type
+            });
+        }
         gameState.tasks.splice(taskIndex, 1);
         gameState.stats.tasksCompleted++;
 
@@ -1682,6 +3134,11 @@ function updateRNGEvents(dt) {
 }
 
 function endDay() {
+    recordPlaytestEvent('day_completed', {
+        completedDay: gameState.day,
+        tasksCompleted: gameState.stats.tasksCompleted,
+        stress: Math.floor(gameState.overstimulation)
+    });
     gameState.stats.daysCompleted++;
 
     if (gameState.day < DAYS) {
@@ -1748,6 +3205,7 @@ function spawnMunty() {
 function endRunSuccess() {
     gameState.isRunning = false;
     const stats = gameState.stats;
+    finishPlaytestRun('success');
     showModal(
         'YOU SURVIVED!',
         `You made it through both days!\n\n` +
@@ -1761,6 +3219,7 @@ function endRunSuccess() {
 function endRunStormOff() {
     gameState.isRunning = false;
     const stats = gameState.stats;
+    finishPlaytestRun('stormed_off');
     showModal(
         'YOU STORMED OFF',
         `Day ${gameState.day}: Overstimulated\n\n` +
@@ -1780,11 +3239,16 @@ function showModal(title, text) {
     modalTitle.textContent = title;
     modalText.textContent = text;
     modal.style.display = 'flex';
+    modalButton.textContent = playtestBot.active && !gameState.isRunning ? 'RESET RUN' : 'CONTINUE';
 
     modalButton.onclick = () => {
         modal.style.display = 'none';
         if (!gameState.isRunning) {
-            location.reload();
+            if (playtestBot.active) {
+                restartPlaytestRun();
+            } else {
+                location.reload();
+            }
         }
     };
 }
@@ -1818,6 +3282,10 @@ function findNearbyDoor() {
 function toggleDoor(doorIndex) {
     if (doorIndex >= 0 && doorIndex < DOORS.length) {
         DOORS[doorIndex].open = !DOORS[doorIndex].open;
+        if (playtestBot.currentRun) {
+            playtestBot.currentRun.doorsToggled++;
+        }
+        recordPlaytestEvent('door_toggled', { name: DOORS[doorIndex].name, open: DOORS[doorIndex].open });
         // Opening or closing a door no longer directly modifies stress.  Stress is handled in the baseline model.
 
         // Push all characters out if they're now inside a closed door
@@ -2482,52 +3950,52 @@ function moveTowardTarget(npc, room, deltaTime) {
 // NPCs navigate from waypoint to waypoint, not directly to targets
 
 const WAYPOINTS = {
-    // Interior doorways - positioned at door centers
-    DOOR_ENSUITE_MASTER: { x: -261, y: -216.8, connections: ['MASTER_BEDROOM', 'ENSUITE'] },
-    DOOR_MASTER_CORRIDOR_L: { x: -256, y: -211.5, connections: ['MASTER_BEDROOM', 'CORRIDOR_LEFT'] },
-    DOOR_READING_CORRIDOR_L: { x: -253.3, y: -213, connections: ['READING', 'CORRIDOR_LEFT'] },
-    DOOR_KITCHEN_CORRIDOR_L: { x: -245.7, y: -213, connections: ['KITCHEN', 'CORRIDOR_LEFT'] },
-    DOOR_BABY_CORRIDOR_L: { x: -249, y: -208, connections: ['BABYS_ROOM', 'CORRIDOR_LEFT'] },
-    DOOR_CORRIDOR_L_LIVING: { x: -241, y: -211.5, connections: ['CORRIDOR_LEFT', 'LIVING_ROOM'] },
-    DOOR_KITCHEN_LIVING: { x: -241, y: -219, connections: ['KITCHEN', 'LIVING_ROOM'] },
-    DOOR_LIVING_CORRIDOR_R: { x: -220.7, y: -212, connections: ['LIVING_ROOM', 'CORRIDOR_RIGHT'] },
-    DOOR_CORRIDOR_R_HOUSEMATE: { x: -217.5, y: -214, connections: ['CORRIDOR_RIGHT', 'HOUSEMATE_ROOM'] },
-    DOOR_CORRIDOR_R_OFFICE: { x: -219.5, y: -209, connections: ['CORRIDOR_RIGHT', 'HOME_OFFICE'] },
-    DOOR_CORRIDOR_R_SPARE: { x: -213.5, y: -209, connections: ['CORRIDOR_RIGHT', 'SPARE_ROOM'] },
+    // Interior doorways
+    DOOR_ENSUITE_MASTER: makeDoorWaypoint('Ensuite → Master Bedroom', ['MASTER_BEDROOM', 'ENSUITE']),
+    DOOR_MASTER_CORRIDOR_L: makeDoorWaypoint('Master Bedroom → Corridor (left)', ['MASTER_BEDROOM', 'CORRIDOR_LEFT']),
+    DOOR_READING_CORRIDOR_L: makeDoorWaypoint('Reading → Corridor (left)', ['READING', 'CORRIDOR_LEFT']),
+    DOOR_KITCHEN_CORRIDOR_L: makeDoorWaypoint('Kitchen → Corridor (left)', ['KITCHEN', 'CORRIDOR_LEFT']),
+    DOOR_BABY_CORRIDOR_L: makeDoorWaypoint('Baby → Corridor (left)', ['BABYS_ROOM', 'CORRIDOR_LEFT']),
+    DOOR_CORRIDOR_L_LIVING: makeDoorWaypoint('Corridor (left) → Living', ['CORRIDOR_LEFT', 'LIVING_ROOM']),
+    DOOR_KITCHEN_LIVING: makeDoorWaypoint('Kitchen → Living', ['KITCHEN', 'LIVING_ROOM']),
+    DOOR_LIVING_CORRIDOR_R: makeDoorWaypoint('Living → Corridor (right)', ['LIVING_ROOM', 'CORRIDOR_RIGHT']),
+    DOOR_CORRIDOR_R_HOUSEMATE: makeDoorWaypoint('Corridor (right) → Housemate', ['CORRIDOR_RIGHT', 'HOUSEMATE_ROOM']),
+    DOOR_CORRIDOR_R_OFFICE: makeDoorWaypoint('Corridor (right) → Office', ['CORRIDOR_RIGHT', 'HOME_OFFICE']),
+    DOOR_CORRIDOR_R_SPARE: makeDoorWaypoint('Corridor (right) → Spare', ['CORRIDOR_RIGHT', 'SPARE_ROOM']),
 
     // Outdoor doorways
-    DOOR_LIVING_PATIO: { x: -220.7, y: -223.3, connections: ['LIVING_ROOM', 'PATIO_MAIN'] },
-    DOOR_CORRIDOR_R_PATIO_STRIP: { x: -210, y: -212, connections: ['CORRIDOR_RIGHT', 'PATIO_STRIP'] },
-    DOOR_LIVING_DOG_PATIO: { x: -232.5, y: -199, connections: ['LIVING_ROOM', 'DOG_PATIO'] },
-    DOOR_MASTER_DOG_PATIO: { x: -261.5, y: -199, connections: ['MASTER_BEDROOM', 'DOG_PATIO'] },
+    DOOR_LIVING_PATIO: makeDoorWaypoint('Living → Patio', ['LIVING_ROOM', 'PATIO_MAIN']),
+    DOOR_CORRIDOR_R_PATIO_STRIP: makeDoorWaypoint('Corridor (right) → Patio strip', ['CORRIDOR_RIGHT', 'PATIO_STRIP']),
+    DOOR_LIVING_DOG_PATIO: makeDoorWaypoint('Living → Dog patio', ['LIVING_ROOM', 'DOG_PATIO']),
+    DOOR_MASTER_DOG_PATIO: makeDoorWaypoint('Master → Dog patio', ['MASTER_BEDROOM', 'DOG_PATIO']),
 
     // Yard doorways
-    DOOR_YARD_SHED: { x: -195, y: -224, connections: ['DOG_YARD', 'SHED'] },
-    DOOR_RUN_COOP: { x: -194, y: -198, connections: ['CHICKEN_RUN', 'CHICKEN_COOP'] },
-    GATE_YARD_CHICKEN_RUN: { x: -198, y: -212, connections: ['DOG_YARD', 'CHICKEN_RUN'] },
-    GATE_DOG_CHICKEN_TOP: { x: -220.7, y: -228.75, connections: ['DOG_YARD', 'CHICKEN_YARD'] },
-    GATE_DOG_CHICKEN_BOTTOM: { x: -220.7, y: -193.75, connections: ['DOG_YARD', 'CHICKEN_YARD'] },
+    DOOR_YARD_SHED: makeDoorWaypoint('Yard → Shed', ['DOG_YARD', 'SHED']),
+    DOOR_RUN_COOP: makeDoorWaypoint('Run → Coop', ['CHICKEN_RUN', 'CHICKEN_COOP']),
+    GATE_YARD_CHICKEN_RUN: makeDoorWaypoint('Yard → Chicken run (gate)', ['DOG_YARD', 'CHICKEN_RUN']),
+    GATE_DOG_CHICKEN_TOP: makeDoorWaypoint('Dog Yard → Chicken Yard (top gate)', ['DOG_YARD', 'CHICKEN_YARD']),
+    GATE_DOG_CHICKEN_BOTTOM: makeDoorWaypoint('Dog Yard → Chicken Yard (bottom gate)', ['DOG_YARD', 'CHICKEN_YARD']),
 
-    // Room centers (for within-room movement)
-    LIVING_ROOM: { x: -231, y: -212, connections: ['DOOR_CORRIDOR_L_LIVING', 'DOOR_KITCHEN_LIVING', 'DOOR_LIVING_CORRIDOR_R', 'DOOR_LIVING_PATIO', 'DOOR_LIVING_DOG_PATIO'] },
-    KITCHEN: { x: -245, y: -219, connections: ['DOOR_KITCHEN_LIVING', 'DOOR_KITCHEN_CORRIDOR_L'] },
-    READING: { x: -252, y: -219, connections: ['DOOR_READING_CORRIDOR_L'] },
-    CORRIDOR_LEFT: { x: -248, y: -210, connections: ['DOOR_CORRIDOR_L_LIVING', 'DOOR_MASTER_CORRIDOR_L', 'DOOR_READING_CORRIDOR_L', 'DOOR_KITCHEN_CORRIDOR_L', 'DOOR_BABY_CORRIDOR_L'] },
-    CORRIDOR_RIGHT: { x: -215, y: -211, connections: ['DOOR_LIVING_CORRIDOR_R', 'DOOR_CORRIDOR_R_HOUSEMATE', 'DOOR_CORRIDOR_R_OFFICE', 'DOOR_CORRIDOR_R_SPARE', 'DOOR_CORRIDOR_R_PATIO_STRIP'] },
-    MASTER_BEDROOM: { x: -260, y: -208, connections: ['DOOR_MASTER_CORRIDOR_L', 'DOOR_ENSUITE_MASTER', 'DOOR_MASTER_DOG_PATIO'] },
-    ENSUITE: { x: -260, y: -221, connections: ['DOOR_ENSUITE_MASTER'] },
-    BABYS_ROOM: { x: -248, y: -203, connections: ['DOOR_BABY_CORRIDOR_L'] },
-    HOUSEMATE_ROOM: { x: -215, y: -216, connections: ['DOOR_CORRIDOR_R_HOUSEMATE'] },
-    HOME_OFFICE: { x: -218, y: -204, connections: ['DOOR_CORRIDOR_R_OFFICE'] },
-    SPARE_ROOM: { x: -213, y: -204, connections: ['DOOR_CORRIDOR_R_SPARE'] },
-    PATIO_MAIN: { x: -213, y: -222, connections: ['DOOR_LIVING_PATIO'] },
-    PATIO_STRIP: { x: -208, y: -209, connections: ['DOOR_CORRIDOR_R_PATIO_STRIP'] },
-    DOG_PATIO: { x: -242, y: -196, connections: ['DOOR_LIVING_DOG_PATIO', 'DOOR_MASTER_DOG_PATIO'] },
-    DOG_YARD: { x: -245, y: -211, connections: ['DOOR_YARD_SHED', 'GATE_YARD_CHICKEN_RUN', 'GATE_DOG_CHICKEN_TOP', 'GATE_DOG_CHICKEN_BOTTOM'] },
-    CHICKEN_YARD: { x: -204, y: -211, connections: ['GATE_DOG_CHICKEN_TOP', 'GATE_DOG_CHICKEN_BOTTOM'] },
-    SHED: { x: -195, y: -228, connections: ['DOOR_YARD_SHED'] },
-    CHICKEN_RUN: { x: -193, y: -202, connections: ['GATE_YARD_CHICKEN_RUN', 'DOOR_RUN_COOP'] },
-    CHICKEN_COOP: { x: -193, y: -199, connections: ['DOOR_RUN_COOP'] }
+    // Room centers
+    LIVING_ROOM: makeRoomWaypoint('LIVING_ROOM', ['DOOR_CORRIDOR_L_LIVING', 'DOOR_KITCHEN_LIVING', 'DOOR_LIVING_CORRIDOR_R', 'DOOR_LIVING_PATIO', 'DOOR_LIVING_DOG_PATIO']),
+    KITCHEN: makeRoomWaypoint('KITCHEN', ['DOOR_KITCHEN_LIVING', 'DOOR_KITCHEN_CORRIDOR_L']),
+    READING: makeRoomWaypoint('READING__DOG_ROOM', ['DOOR_READING_CORRIDOR_L']),
+    CORRIDOR_LEFT: makeRoomWaypoint('CORRIDOR_LEFT', ['DOOR_CORRIDOR_L_LIVING', 'DOOR_MASTER_CORRIDOR_L', 'DOOR_READING_CORRIDOR_L', 'DOOR_KITCHEN_CORRIDOR_L', 'DOOR_BABY_CORRIDOR_L']),
+    CORRIDOR_RIGHT: makeRoomWaypoint('CORRIDOR_RIGHT', ['DOOR_LIVING_CORRIDOR_R', 'DOOR_CORRIDOR_R_HOUSEMATE', 'DOOR_CORRIDOR_R_OFFICE', 'DOOR_CORRIDOR_R_SPARE', 'DOOR_CORRIDOR_R_PATIO_STRIP']),
+    MASTER_BEDROOM: makeRoomWaypoint('MASTER_BEDROOM', ['DOOR_MASTER_CORRIDOR_L', 'DOOR_ENSUITE_MASTER', 'DOOR_MASTER_DOG_PATIO']),
+    ENSUITE: makeRoomWaypoint('ENSUITE', ['DOOR_ENSUITE_MASTER']),
+    BABYS_ROOM: makeRoomWaypoint('BABYS_ROOM', ['DOOR_BABY_CORRIDOR_L']),
+    HOUSEMATE_ROOM: makeRoomWaypoint('HOUSEMATE_ROOM', ['DOOR_CORRIDOR_R_HOUSEMATE']),
+    HOME_OFFICE: makeRoomWaypoint('HOME_OFFICE', ['DOOR_CORRIDOR_R_OFFICE']),
+    SPARE_ROOM: makeRoomWaypoint('SPARE_ROOM', ['DOOR_CORRIDOR_R_SPARE']),
+    PATIO_MAIN: makeRoomWaypoint('PATIO_MAIN', ['DOOR_LIVING_PATIO']),
+    PATIO_STRIP: makeRoomWaypoint('PATIO_STRIP', ['DOOR_CORRIDOR_R_PATIO_STRIP']),
+    DOG_PATIO: makeRoomWaypoint('DOG_PATIO', ['DOOR_LIVING_DOG_PATIO', 'DOOR_MASTER_DOG_PATIO']),
+    DOG_YARD: makeRoomWaypoint('DOG_YARD', ['DOOR_YARD_SHED', 'GATE_YARD_CHICKEN_RUN', 'GATE_DOG_CHICKEN_TOP', 'GATE_DOG_CHICKEN_BOTTOM']),
+    CHICKEN_YARD: makeRoomWaypoint('CHICKEN_YARD', ['GATE_DOG_CHICKEN_TOP', 'GATE_DOG_CHICKEN_BOTTOM']),
+    SHED: makeRoomWaypoint('SHED', ['DOOR_YARD_SHED']),
+    CHICKEN_RUN: makeRoomWaypoint('CHICKEN_RUN', ['GATE_YARD_CHICKEN_RUN', 'DOOR_RUN_COOP']),
+    CHICKEN_COOP: makeRoomWaypoint('CHICKEN_COOP', ['DOOR_RUN_COOP'])
 };
 
 // Convert waypoint coordinates to pixel coordinates
@@ -2556,6 +4024,143 @@ function findNearestWaypoint(x, y, excludeWaypoints = []) {
     }
     
     return { waypoint: nearest, distance: nearestDist };
+}
+
+function isDoorWaypointName(waypointName) {
+    return !!waypointName && (waypointName.startsWith('DOOR_') || waypointName.startsWith('GATE_'));
+}
+
+function waypointTouchesRoom(waypointName, roomKey) {
+    if (!roomKey) return false;
+    if (waypointName === roomKey) return true;
+    const waypoint = WAYPOINTS[waypointName];
+    return !!waypoint && waypoint.connections.includes(roomKey);
+}
+
+function getWaypointPathDistance(path) {
+    if (!path || path.length < 2) return 0;
+
+    let total = 0;
+    for (let i = 0; i < path.length - 1; i++) {
+        const current = WAYPOINTS[path[i]];
+        const next = WAYPOINTS[path[i + 1]];
+        if (!current || !next) continue;
+        total += Math.hypot(next.pixelX - current.pixelX, next.pixelY - current.pixelY);
+    }
+
+    return total;
+}
+
+function getWaypointCandidatesForPosition(x, y, bodySize = DAD_HITBOX_SIZE, maxCandidates = 6) {
+    const roomKey = getRoomAt(x, y);
+    const candidates = [];
+
+    for (const [waypointName, waypoint] of Object.entries(WAYPOINTS)) {
+        const distance = Math.hypot(waypoint.pixelX - x, waypoint.pixelY - y);
+        const visible = hasLineOfSight(x, y, waypoint.pixelX, waypoint.pixelY, bodySize);
+        const inSameRoom = waypointTouchesRoom(waypointName, roomKey);
+        const isRoomCenter = waypointName === roomKey;
+        const score = distance
+            + (isDoorWaypointName(waypointName) ? 18 : 0)
+            + (visible ? 0 : 120)
+            + (inSameRoom ? 0 : 80)
+            - (isRoomCenter ? 40 : 0);
+
+        candidates.push({
+            waypoint: waypointName,
+            distance,
+            score,
+            visible,
+            inSameRoom,
+            isRoomCenter
+        });
+    }
+
+    candidates.sort((a, b) => a.score - b.score || a.distance - b.distance);
+
+    const selected = [];
+    const seen = new Set();
+
+    if (roomKey && WAYPOINTS[roomKey]) {
+        const roomCandidate = candidates.find(candidate => candidate.waypoint === roomKey);
+        if (roomCandidate) {
+            selected.push(roomCandidate);
+            seen.add(roomCandidate.waypoint);
+        }
+    }
+
+    for (const candidate of candidates) {
+        if (seen.has(candidate.waypoint)) continue;
+        selected.push(candidate);
+        seen.add(candidate.waypoint);
+        if (selected.length >= maxCandidates) break;
+    }
+
+    return selected;
+}
+
+function findBestWaypointRoute(startX, startY, targetX, targetY, options = {}) {
+    const bodySize = options.bodySize || DAD_HITBOX_SIZE;
+    const routeContext = options.routeContext || null;
+    const startCandidates = getWaypointCandidatesForPosition(startX, startY, bodySize, 6);
+    const endCandidates = getWaypointCandidatesForPosition(targetX, targetY, bodySize, 4);
+
+    let bestRoute = null;
+
+    for (const startCandidate of startCandidates) {
+        for (const endCandidate of endCandidates) {
+            const path = findWaypointPath(startCandidate.waypoint, endCandidate.waypoint, routeContext);
+            if (!path || path.length === 0) continue;
+
+            const totalScore = startCandidate.score + endCandidate.score + getWaypointPathDistance(path);
+            if (!bestRoute || totalScore < bestRoute.score) {
+                bestRoute = {
+                    score: totalScore,
+                    startWaypoint: startCandidate.waypoint,
+                    endWaypoint: endCandidate.waypoint,
+                    waypoints: path
+                };
+            }
+        }
+    }
+
+    if (bestRoute) {
+        return bestRoute;
+    }
+
+    const start = findNearestWaypoint(startX, startY, []);
+    const end = findNearestWaypoint(targetX, targetY, []);
+    if (!start.waypoint || !end.waypoint) return null;
+
+    const fallbackPath = findWaypointPath(start.waypoint, end.waypoint, routeContext);
+    if (!fallbackPath || fallbackPath.length === 0) return null;
+
+    return {
+        score: getWaypointPathDistance(fallbackPath),
+        startWaypoint: start.waypoint,
+        endWaypoint: end.waypoint,
+        waypoints: fallbackPath
+    };
+}
+
+function getWaypointReachThreshold(waypointName, bodySize = DAD_HITBOX_SIZE) {
+    if (isDoorWaypointName(waypointName)) {
+        const door = getDoorForWaypointName(waypointName);
+        if (door) {
+            const doorRect = getDoorCollisionRect(door);
+            const doorwayThickness = door.orient === 'v' ? doorRect.w : doorRect.h;
+            return Math.max(30, bodySize / 2 + doorwayThickness / 2 + 10);
+        }
+        return Math.max(30, bodySize + 2);
+    }
+
+    return Math.max(72, bodySize + 32);
+}
+
+function hasReachedWaypoint(waypointName, x, y, bodySize = DAD_HITBOX_SIZE) {
+    const waypoint = WAYPOINTS[waypointName];
+    if (!waypoint) return true;
+    return Math.hypot(x - waypoint.pixelX, y - waypoint.pixelY) < getWaypointReachThreshold(waypointName, bodySize);
 }
 
 // Find path between two waypoints using breadth-first search
@@ -3137,20 +4742,30 @@ function worldToScreen(x, y) {
 function drawWorldObjects() {
     for (let key in WORLD_OBJECTS) {
         let obj = WORLD_OBJECTS[key];
-        
-        // Draw the main body
+
+        const objX = (obj.x + OFFSET_X) * TILE_SIZE;
+        const objY = (obj.y + OFFSET_Y) * TILE_SIZE;
+        const objW = obj.w * TILE_SIZE;
+        const objH = obj.h * TILE_SIZE;
+
         ctx.fillStyle = obj.color;
-        ctx.fillRect(obj.x + OFFSET_X, obj.y + OFFSET_Y, obj.w, obj.h);
-        
-        // Add a "Blueprint" border
+        ctx.fillRect(objX, objY, objW, objH);
+
+        if (obj.accent) {
+            const insetX = Math.max(3, objW * 0.12);
+            const insetY = Math.max(3, objH * 0.12);
+            ctx.fillStyle = obj.accent;
+            ctx.fillRect(objX + insetX, objY + insetY, Math.max(4, objW - insetX * 2), Math.max(4, objH - insetY * 2));
+        }
+
         ctx.strokeStyle = "rgba(255, 255, 255, 0.3)";
         ctx.lineWidth = 1;
-        ctx.strokeRect(obj.x + OFFSET_X, obj.y + OFFSET_Y, obj.w, obj.h);
-        
+        ctx.strokeRect(objX, objY, objW, objH);
+
         // Special: If Sprinkler is placed, draw its AOE
         if (key === 'SPRINKLER' && gameState.sprinklerActive) {
             ctx.beginPath();
-            ctx.arc(obj.x + OFFSET_X, obj.y + OFFSET_Y, 80, 0, Math.PI * 2);
+            ctx.arc(objX, objY, 80, 0, Math.PI * 2);
             ctx.fillStyle = "rgba(0, 150, 255, 0.15)";
             ctx.fill();
         }
@@ -3455,12 +5070,7 @@ function drawFloorplan() {
     }
     
     // 2. Draw Static Objects (Blueprint Furniture)
-    const furniture = [
-        { x: -241, y: -226, w: 20, h: 5, color: '#6d4c41', label: 'Couch' },
-        { x: -264, y: -226, w: 8, h: 9, color: '#1565c0', label: 'Bed' },
-        { x: -264, y: -220, w: 2, h: 3, color: '#eee', label: 'Toilet' }
-    ];
-    furniture.forEach(obj => {
+    Object.values(WORLD_OBJECTS).forEach(obj => {
         ctx.fillStyle = obj.color;
         ctx.fillRect((obj.x + OFFSET_X) * TILE_SIZE, (obj.y + OFFSET_Y) * TILE_SIZE, obj.w * TILE_SIZE, obj.h * TILE_SIZE);
         ctx.strokeStyle = "white";
@@ -3628,6 +5238,84 @@ function checkCoffeeMachine(x, y) {
     
     const dist = Math.hypot(coffeeCenterX - dadCenterX, coffeeCenterY - dadCenterY);
     return dist < INTERACT_DIST;
+}
+
+function drawPlaytestOverlay() {
+    if (!playtestBot.active || (!playtestBot.objective && !playtestBot.recoveryTarget && !playtestBot.lastMoveTarget)) {
+        return;
+    }
+
+    const dadCenterX = gameState.dad.x + gameState.dad.width / 2;
+    const dadCenterY = gameState.dad.y + gameState.dad.height / 2;
+    const points = [{ x: dadCenterX, y: dadCenterY }];
+
+    if (playtestBot.route) {
+        for (const waypointName of playtestBot.route.waypoints.slice(playtestBot.routeIndex, playtestBot.routeIndex + 6)) {
+            const waypoint = WAYPOINTS[waypointName];
+            if (waypoint) {
+                points.push({ x: waypoint.pixelX, y: waypoint.pixelY });
+            }
+        }
+    }
+
+    if (playtestBot.objective) {
+        points.push({ x: playtestBot.objective.targetX, y: playtestBot.objective.targetY });
+    } else if (playtestBot.lastMoveTarget) {
+        points.push({ x: playtestBot.lastMoveTarget.x, y: playtestBot.lastMoveTarget.y });
+    }
+
+    ctx.save();
+
+    if (points.length > 1) {
+        ctx.strokeStyle = 'rgba(77, 184, 255, 0.9)';
+        ctx.lineWidth = 3;
+        ctx.setLineDash([10, 8]);
+        ctx.beginPath();
+        ctx.moveTo(points[0].x, points[0].y);
+        for (let i = 1; i < points.length; i++) {
+            ctx.lineTo(points[i].x, points[i].y);
+        }
+        ctx.stroke();
+        ctx.setLineDash([]);
+    }
+
+    if (playtestBot.objective) {
+        ctx.strokeStyle = 'rgba(255, 204, 0, 0.95)';
+        ctx.lineWidth = 3;
+        ctx.beginPath();
+        ctx.arc(playtestBot.objective.targetX, playtestBot.objective.targetY, 18, 0, Math.PI * 2);
+        ctx.stroke();
+        ctx.beginPath();
+        ctx.moveTo(playtestBot.objective.targetX - 12, playtestBot.objective.targetY);
+        ctx.lineTo(playtestBot.objective.targetX + 12, playtestBot.objective.targetY);
+        ctx.moveTo(playtestBot.objective.targetX, playtestBot.objective.targetY - 12);
+        ctx.lineTo(playtestBot.objective.targetX, playtestBot.objective.targetY + 12);
+        ctx.stroke();
+    }
+
+    if (playtestBot.lastMoveTarget) {
+        ctx.fillStyle = 'rgba(77, 184, 255, 0.95)';
+        ctx.beginPath();
+        ctx.arc(playtestBot.lastMoveTarget.x, playtestBot.lastMoveTarget.y, 8, 0, Math.PI * 2);
+        ctx.fill();
+
+        const nextLabel = describePlaytestWaypoint(playtestBot.lastMoveTarget.waypointName);
+        ctx.fillStyle = '#ffffff';
+        ctx.font = 'bold 12px monospace';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'bottom';
+        ctx.fillText(nextLabel, playtestBot.lastMoveTarget.x, playtestBot.lastMoveTarget.y - 12);
+    }
+
+    if (playtestBot.recoveryTarget) {
+        ctx.strokeStyle = 'rgba(255, 138, 61, 0.95)';
+        ctx.lineWidth = 3;
+        ctx.beginPath();
+        ctx.arc(playtestBot.recoveryTarget.x, playtestBot.recoveryTarget.y, 12, 0, Math.PI * 2);
+        ctx.stroke();
+    }
+
+    ctx.restore();
 }
 
 function render() {
@@ -4192,6 +5880,8 @@ function render() {
         ring.alpha -= 0.02;
         if (ring.alpha <= 0) gameState.audioRings.splice(index, 1);
     });
+
+    drawPlaytestOverlay();
 
     // Restore camera transform (back to screen space for UI)
     ctx.restore();
@@ -5351,7 +7041,7 @@ let lastTime = 0;
 function gameLoop() {
     const now = Date.now();
     if (lastTime === 0) lastTime = now; // Initialize on first frame
-    const deltaTime = Math.min((now - lastTime) / 1000, 0.1); // Cap at 100ms
+    const deltaTime = Math.min(((now - lastTime) / 1000) * playtestBot.timeScale, 0.1); // Cap at 100ms
     lastTime = now;
 
     update(deltaTime);
@@ -5362,4 +7052,10 @@ function gameLoop() {
 
 // Start game
 initGame();
+if (AUTOSTART_PLAYTEST) {
+    if (PLAYTEST_SPEEDS.includes(AUTOSTART_SPEED)) {
+        playtestBot.timeScale = AUTOSTART_SPEED;
+    }
+    togglePlaytestBot(true);
+}
 gameLoop();

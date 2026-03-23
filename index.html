@@ -35,6 +35,29 @@
                 <button id="modal-button">CONTINUE</button>
             </div>
         </div>
+
+        <div id="playtest-panel">
+            <div id="playtest-title">PLAYTEST BOT</div>
+            <div id="playtest-status">OFFLINE</div>
+            <div class="playtest-section">
+                <div class="playtest-label">RUN SUMMARY</div>
+                <pre id="playtest-summary">Toggle the bot to start an autoplay run.</pre>
+            </div>
+            <div class="playtest-section">
+                <div class="playtest-label">LIVE INFO</div>
+                <pre id="playtest-details">Waiting for run data.</pre>
+            </div>
+            <div class="playtest-section">
+                <div class="playtest-label">EVENT LOG</div>
+                <pre id="playtest-events">No events yet.</pre>
+            </div>
+            <div id="playtest-actions">
+                <button class="playtest-btn" id="playtest-toggle" type="button">START</button>
+                <button class="playtest-btn" id="playtest-speed" type="button">1x</button>
+                <button class="playtest-btn" id="playtest-export" type="button">EXPORT</button>
+                <button class="playtest-btn" id="playtest-reset" type="button">RESET</button>
+            </div>
+        </div>
     </div>
 
     <script src="game.js"></script>

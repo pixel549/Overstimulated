@@ -86,6 +86,128 @@ canvas {
     }
 }
 
+#playtest-panel {
+    position: absolute;
+    left: 12px;
+    top: 78px;
+    width: 292px;
+    max-height: calc(100vh - 96px);
+    z-index: 30;
+    background: rgba(0, 0, 0, 0.82);
+    border: 2px solid rgba(77, 184, 255, 0.75);
+    color: #fff;
+    padding: 10px;
+    font-family: 'Courier New', monospace;
+    backdrop-filter: blur(6px);
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+#playtest-title {
+    color: #4db8ff;
+    font-size: 12px;
+    font-weight: bold;
+    margin-bottom: 6px;
+}
+
+#playtest-status {
+    color: #ffcc00;
+    font-size: 11px;
+}
+
+.playtest-section {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.playtest-label {
+    color: #7fd3ff;
+    font-size: 10px;
+    letter-spacing: 0.06em;
+}
+
+#playtest-summary,
+#playtest-details,
+#playtest-events {
+    color: #d9e7f3;
+    font-size: 10px;
+    line-height: 1.4;
+    white-space: pre-wrap;
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    background: rgba(255, 255, 255, 0.05);
+    padding: 6px;
+    overflow-y: auto;
+}
+
+#playtest-summary {
+    min-height: 96px;
+}
+
+#playtest-details {
+    min-height: 112px;
+}
+
+#playtest-events {
+    min-height: 124px;
+    max-height: 168px;
+}
+
+#playtest-actions {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 8px;
+}
+
+.playtest-btn {
+    border: 1px solid rgba(255, 255, 255, 0.25);
+    background: rgba(255, 255, 255, 0.08);
+    color: #fff;
+    font-family: 'Courier New', monospace;
+    font-size: 11px;
+    font-weight: bold;
+    min-height: 32px;
+}
+
+.playtest-btn:active {
+    transform: scale(0.98);
+}
+
+@media (max-width: 900px) {
+    #playtest-panel {
+        top: 12px;
+        left: 12px;
+        width: 224px;
+        max-height: calc(100vh - 24px);
+        padding: 8px;
+    }
+
+    #playtest-summary,
+    #playtest-details,
+    #playtest-events {
+        font-size: 9px;
+    }
+
+    #playtest-summary {
+        min-height: 72px;
+    }
+
+    #playtest-details {
+        min-height: 92px;
+    }
+
+    #playtest-events {
+        min-height: 96px;
+        max-height: 126px;
+    }
+
+    .playtest-btn {
+        min-height: 28px;
+        font-size: 10px;
+    }
+}
+
 #ui-overlay {
     position: absolute;
     top: 0;
