@@ -380,17 +380,34 @@ class DirectPlayerBot:
             )
         return False
 
-    def move_toward(self, snapshot: dict[str, Any], target_x: int, target_y: int, *, action_held: bool = False) -> None:
+    def move_toward(
+        self,
+        snapshot: dict[str, Any],
+        target_x: int,
+        target_y: int,
+        *,
+        action_held: bool = False,
+        door_orient: str | None = None,
+    ) -> None:
         dad = snapshot["dad"]
         dx = target_x - dad["centerX"]
         dy = target_y - dad["centerY"]
         distance = math.hypot(dx, dy)
         dead_zone = 6
+        align_threshold = 12
+
+        move_x = dx
+        move_y = dy
+        if door_orient == "v" and abs(dy) > align_threshold and abs(dx) > 18:
+            move_x = 0
+        elif door_orient == "h" and abs(dx) > align_threshold and abs(dy) > 18:
+            move_y = 0
+
         self.set_controls(
-            up=dy < -dead_zone,
-            down=dy > dead_zone,
-            left=dx < -dead_zone,
-            right=dx > dead_zone,
+            up=move_y < -dead_zone,
+            down=move_y > dead_zone,
+            left=move_x < -dead_zone,
+            right=move_x > dead_zone,
             sprinting=distance > 220 and snapshot["sprintEnergy"] > 25,
             actionHeld=action_held,
         )
@@ -494,9 +511,10 @@ class DirectPlayerBot:
 
         plan = self.route_plan(objective.target_x, objective.target_y)
         next_target = plan["nextTarget"]
-        self.move_toward(snapshot, next_target["x"], next_target["y"])
-
         target_door = plan.get("targetDoor")
+        door_orient = target_door.get("orient") if target_door else None
+        self.move_toward(snapshot, next_target["x"], next_target["y"], door_orient=door_orient)
+
         if target_door and not target_door["open"] and target_door["distance"] <= 72:
             self.tap("action")
 

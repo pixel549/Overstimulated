@@ -104,11 +104,24 @@ canvas {
     gap: 8px;
 }
 
+#playtest-header {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 8px;
+}
+
+#playtest-heading {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    min-width: 0;
+}
+
 #playtest-title {
     color: #4db8ff;
     font-size: 12px;
     font-weight: bold;
-    margin-bottom: 6px;
 }
 
 #playtest-status {
@@ -170,17 +183,38 @@ canvas {
     min-height: 32px;
 }
 
+#playtest-collapse {
+    min-height: 28px;
+    min-width: 58px;
+    padding: 0 10px;
+    flex: 0 0 auto;
+}
+
 .playtest-btn:active {
     transform: scale(0.98);
 }
 
+#playtest-panel.is-collapsed {
+    width: 204px;
+}
+
+#playtest-panel.is-collapsed .details-section,
+#playtest-panel.is-collapsed .events-section {
+    display: none;
+}
+
+#playtest-panel.is-collapsed #playtest-summary {
+    min-height: 58px;
+}
+
 @media (max-width: 900px) {
     #playtest-panel {
-        top: 12px;
-        left: 12px;
-        width: 224px;
-        max-height: calc(100vh - 24px);
-        padding: 8px;
+        top: 8px;
+        left: 8px;
+        width: 188px;
+        max-height: calc(100vh - 16px);
+        padding: 6px;
+        gap: 6px;
     }
 
     #playtest-summary,
@@ -190,21 +224,40 @@ canvas {
     }
 
     #playtest-summary {
-        min-height: 72px;
+        min-height: 56px;
     }
 
     #playtest-details {
-        min-height: 92px;
+        min-height: 76px;
     }
 
     #playtest-events {
-        min-height: 96px;
-        max-height: 126px;
+        min-height: 76px;
+        max-height: 96px;
     }
 
     .playtest-btn {
-        min-height: 28px;
-        font-size: 10px;
+        min-height: 26px;
+        font-size: 9px;
+    }
+
+    #playtest-collapse {
+        min-width: 52px;
+        min-height: 24px;
+        padding: 0 8px;
+    }
+
+    #playtest-panel.is-collapsed {
+        width: 156px;
+    }
+
+    #playtest-panel.is-collapsed .summary-section {
+        gap: 2px;
+    }
+
+    #playtest-panel.is-collapsed #playtest-summary {
+        min-height: 38px;
+        padding: 4px;
     }
 }
 

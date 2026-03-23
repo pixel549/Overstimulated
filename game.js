@@ -63,6 +63,7 @@ const playtestElements = {
     summary: document.getElementById('playtest-summary'),
     details: document.getElementById('playtest-details'),
     events: document.getElementById('playtest-events'),
+    collapse: document.getElementById('playtest-collapse'),
     toggle: document.getElementById('playtest-toggle'),
     speed: document.getElementById('playtest-speed'),
     export: document.getElementById('playtest-export'),
@@ -103,7 +104,9 @@ let playtestBot = {
         runs: []
     },
     currentRun: null,
-    lastFinishedRun: null
+    lastFinishedRun: null,
+    panelCollapsed: window.innerWidth <= 900,
+    panelUserSet: false
 };
 
 window.playtestBot = playtestBot;
@@ -122,6 +125,34 @@ function resizeCanvasDisplay() {
 
     canvas.style.width = `${displayWidth}px`;
     canvas.style.height = `${displayHeight}px`;
+    if (!playtestBot.panelUserSet) {
+        playtestBot.panelCollapsed = window.innerWidth <= 900;
+    }
+    syncPlaytestPanelState();
+}
+
+function syncPlaytestPanelState() {
+    if (!playtestElements.panel) return;
+
+    const shouldCollapse = playtestBot.panelCollapsed;
+    playtestElements.panel.classList.toggle('is-collapsed', shouldCollapse);
+
+    if (playtestElements.collapse) {
+        playtestElements.collapse.textContent = shouldCollapse ? 'MORE' : 'LESS';
+        playtestElements.collapse.setAttribute('aria-expanded', shouldCollapse ? 'false' : 'true');
+        playtestElements.collapse.setAttribute(
+            'aria-label',
+            shouldCollapse ? 'Expand playtest panel' : 'Collapse playtest panel'
+        );
+    }
+}
+
+function setPlaytestPanelCollapsed(collapsed, userInitiated = false) {
+    playtestBot.panelCollapsed = !!collapsed;
+    if (userInitiated) {
+        playtestBot.panelUserSet = true;
+    }
+    syncPlaytestPanelState();
 }
 
 function setVirtualActionState(action, active) {
@@ -176,6 +207,11 @@ if (playtestElements.export) {
 if (playtestElements.reset) {
     playtestElements.reset.addEventListener('click', () => restartPlaytestRun());
 }
+if (playtestElements.collapse) {
+    playtestElements.collapse.addEventListener('click', () => {
+        setPlaytestPanelCollapsed(!playtestBot.panelCollapsed, true);
+    });
+}
 
 window.addEventListener('resize', resizeCanvasDisplay);
 window.addEventListener('orientationchange', resizeCanvasDisplay);
@@ -213,6 +249,21 @@ for (const k of Object.keys(RAW_ROOMS)) {
     const r = RAW_ROOMS[k];
     ROOMS[k] = { x: r.x + OFFSET_X, y: r.y + OFFSET_Y, w: r.w, h: r.h, name: r.name, color: r.color };
 }
+
+const OUTDOOR_LAYOUT = {
+    SPRINKLER: {
+        x: ROOMS.DOG_YARD.x + 15,
+        y: ROOMS.DOG_YARD.y + 4,
+        rawX: RAW_ROOMS.DOG_YARD.x + 15,
+        rawY: RAW_ROOMS.DOG_YARD.y + 4
+    },
+    MOWER: { x: (ROOMS.DOG_YARD.x + 10) * TILE_SIZE, y: (ROOMS.DOG_YARD.y + 5) * TILE_SIZE }
+};
+
+const ROOM_WAYPOINT_OVERRIDES = {
+    DOG_YARD: { x: RAW_ROOMS.DOG_YARD.x + 3, y: RAW_ROOMS.DOG_YARD.y + 20 },
+    CHICKEN_YARD: { x: RAW_ROOMS.CHICKEN_YARD.x + 22, y: RAW_ROOMS.CHICKEN_YARD.y + 20 }
+};
 
 const RAW_WALLS = [
     // Yards
@@ -295,12 +346,19 @@ function getRawDoorCenter(name) {
 }
 
 function makeDoorWaypoint(name, connections) {
-    return { ...getRawDoorCenter(name), connections };
+    return { ...getRawDoorCenter(name), connections, rooms: connections.slice() };
 }
 
 function makeRoomWaypoint(roomKey, connections) {
     const room = RAW_ROOMS[roomKey];
-    return { x: room.x + room.w / 2, y: room.y + room.h / 2, connections };
+    const override = ROOM_WAYPOINT_OVERRIDES[roomKey];
+    const x = override ? override.x : room.x + room.w / 2;
+    const y = override ? override.y : room.y + room.h / 2;
+    return { x, y, connections, rooms: [roomKey] };
+}
+
+function makeWaypoint(x, y, connections, rooms = []) {
+    return { x, y, connections, rooms };
 }
 
 // --- NAVIGATION GRAPH ---
@@ -344,7 +402,7 @@ const POIS = {
     TOY_BOX: { x: ROOMS.SPARE_ROOM.x + 2, y: ROOMS.SPARE_ROOM.y + 6, type: 'deposit', name: 'Toy Box', room: 'SPARE_ROOM' },
     PATIO: { x: ROOMS.PATIO_MAIN.x + 8, y: ROOMS.PATIO_MAIN.y + 3, type: 'coverage', name: 'Patio', room: 'PATIO_MAIN' },
     BEER: { x: ROOMS.SHED.x + 8, y: ROOMS.SHED.y + 3, type: 'fetch', name: 'Beer', room: 'SHED' },
-    SPRINKLER: { x: ROOMS.DOG_YARD.x + 20, y: ROOMS.DOG_YARD.y + 20, type: 'coverage', name: 'Sprinkler', room: 'DOG_YARD' },
+    SPRINKLER: { x: OUTDOOR_LAYOUT.SPRINKLER.x, y: OUTDOOR_LAYOUT.SPRINKLER.y, type: 'coverage', name: 'Sprinkler', room: 'DOG_YARD' },
     VACUUM: { x: ROOMS.CORRIDOR_RIGHT.x + 5, y: ROOMS.CORRIDOR_RIGHT.y + 1, type: 'tool', name: 'Vacuum', room: 'CORRIDOR_RIGHT' },
     BED: { x: ROOMS.MASTER_BEDROOM.x + 4, y: ROOMS.MASTER_BEDROOM.y + 10, type: 'relax', name: 'Bed', room: 'MASTER_BEDROOM' },
     BABY_COT: { x: ROOMS.BABYS_ROOM.x + 8, y: ROOMS.BABYS_ROOM.y + 4, type: 'hold', name: 'Baby', room: 'BABYS_ROOM' },
@@ -733,8 +791,8 @@ function resetMowerState() {
     gameState.dad.carrying = null;
     gameState.mowedGrass = new Set();
     gameState.mower = {
-        x: (ROOMS.DOG_YARD.x + 8) * TILE_SIZE,
-        y: (ROOMS.DOG_YARD.y + 10) * TILE_SIZE,
+        x: OUTDOOR_LAYOUT.MOWER.x,
+        y: OUTDOOR_LAYOUT.MOWER.y,
         width: 34,
         height: 18
     };
@@ -1162,6 +1220,7 @@ function serializeDirectPlayerDoor(door) {
         index,
         name: door.name,
         open: !!door.open,
+        orient: door.orient || 'h',
         x: Math.round(center.x),
         y: Math.round(center.y),
         distance: Math.round(Math.hypot(dadCenterX - center.x, dadCenterY - center.y))
@@ -1287,21 +1346,24 @@ function getDirectPlayerRoutePlan(targetX, targetY) {
     }
 
     let nextTarget = { x: Math.round(targetX), y: Math.round(targetY), waypointName: null, label: 'Direct' };
-    for (const waypointName of route.waypoints) {
+    const visibleRouteTarget = getVisibleRouteWaypoint(
+        route.waypoints,
+        0,
+        dadCenterX,
+        dadCenterY,
+        gameState.dad.width
+    );
+    if (visibleRouteTarget.target) {
+        const waypointName = visibleRouteTarget.target.waypointName;
         const waypoint = WAYPOINTS[waypointName];
-        if (!waypoint) continue;
-
-        if (hasReachedWaypoint(waypointName, dadCenterX, dadCenterY, gameState.dad.width)) {
-            continue;
-        }
-
+        if (waypoint) {
         nextTarget = {
             x: Math.round(waypoint.pixelX),
             y: Math.round(waypoint.pixelY),
             waypointName,
             label: describePlaytestWaypoint(waypointName)
         };
-        break;
+        }
     }
 
     const targetDoor = serializeDirectPlayerDoor(getDoorForWaypointName(nextTarget.waypointName));
@@ -1466,6 +1528,50 @@ function buildPlaytestRoute(targetX, targetY) {
     };
 }
 
+function getVisibleRouteWaypoint(routeWaypoints, startIndex, originX, originY, bodySize = DAD_HITBOX_SIZE) {
+    let nextIndex = startIndex;
+    let fallbackTarget = null;
+    let chosenTarget = null;
+    const originRoomKey = getRoomAt(originX, originY);
+
+    for (let index = startIndex; index < routeWaypoints.length; index++) {
+        const waypointName = routeWaypoints[index];
+        const waypoint = WAYPOINTS[waypointName];
+        if (!waypoint) {
+            nextIndex = index + 1;
+            continue;
+        }
+
+        if (waypointName === originRoomKey && index < routeWaypoints.length - 1) {
+            nextIndex = index + 1;
+            continue;
+        }
+
+        if (hasReachedWaypoint(waypointName, originX, originY, bodySize)) {
+            nextIndex = index + 1;
+            continue;
+        }
+
+        const target = { x: waypoint.pixelX, y: waypoint.pixelY, waypointName, routeIndex: index };
+        if (!fallbackTarget) {
+            fallbackTarget = target;
+        }
+
+        if (hasLineOfSight(originX, originY, waypoint.pixelX, waypoint.pixelY, bodySize)) {
+            chosenTarget = target;
+            nextIndex = index;
+            continue;
+        }
+
+        break;
+    }
+
+    return {
+        routeIndex: nextIndex,
+        target: chosenTarget || fallbackTarget
+    };
+}
+
 function getPlaytestMoveTarget(targetX, targetY) {
     const dadCenterX = gameState.dad.x + gameState.dad.width / 2;
     const dadCenterY = gameState.dad.y + gameState.dad.height / 2;
@@ -1490,37 +1596,49 @@ function getPlaytestMoveTarget(targetX, targetY) {
         return { x: targetX, y: targetY, waypointName: null };
     }
 
-    while (playtestBot.routeIndex < playtestBot.route.waypoints.length) {
-        const waypointName = playtestBot.route.waypoints[playtestBot.routeIndex];
-        const waypoint = WAYPOINTS[waypointName];
-        if (!waypoint) {
-            playtestBot.routeIndex++;
-            continue;
-        }
+    const visibleRouteTarget = getVisibleRouteWaypoint(
+        playtestBot.route.waypoints,
+        playtestBot.routeIndex,
+        dadCenterX,
+        dadCenterY,
+        gameState.dad.width
+    );
 
-        if (hasReachedWaypoint(waypointName, dadCenterX, dadCenterY, gameState.dad.width)) {
-            playtestBot.routeIndex++;
-            continue;
-        }
-
-        return { x: waypoint.pixelX, y: waypoint.pixelY, waypointName };
+    playtestBot.routeIndex = visibleRouteTarget.routeIndex;
+    if (visibleRouteTarget.target) {
+        return {
+            x: visibleRouteTarget.target.x,
+            y: visibleRouteTarget.target.y,
+            waypointName: visibleRouteTarget.target.waypointName
+        };
     }
 
     return { x: targetX, y: targetY, waypointName: null };
 }
 
-function setPlaytestMovementToward(targetX, targetY) {
+function setPlaytestMovementToward(targetX, targetY, targetDoor = null) {
     const dadCenterX = gameState.dad.x + gameState.dad.width / 2;
     const dadCenterY = gameState.dad.y + gameState.dad.height / 2;
     const dx = targetX - dadCenterX;
     const dy = targetY - dadCenterY;
     const distance = Math.hypot(dx, dy);
     const deadZone = 6;
+    const alignThreshold = 12;
 
-    input.left = dx < -deadZone;
-    input.right = dx > deadZone;
-    input.up = dy < -deadZone;
-    input.down = dy > deadZone;
+    let moveX = dx;
+    let moveY = dy;
+    if (targetDoor) {
+        if (targetDoor.orient === 'v' && Math.abs(dy) > alignThreshold && Math.abs(dx) > 18) {
+            moveX = 0;
+        } else if (targetDoor.orient === 'h' && Math.abs(dx) > alignThreshold && Math.abs(dy) > 18) {
+            moveY = 0;
+        }
+    }
+
+    input.left = moveX < -deadZone;
+    input.right = moveX > deadZone;
+    input.up = moveY < -deadZone;
+    input.down = moveY > deadZone;
     input.sprinting = distance > 220 && gameState.sprintergyLeft > 25;
 }
 
@@ -1540,7 +1658,7 @@ function movePlaytestToward(targetX, targetY) {
     const moveTarget = getPlaytestMoveTarget(targetX, targetY);
     const targetDoor = cachePlaytestMoveTarget(moveTarget);
 
-    setPlaytestMovementToward(moveTarget.x, moveTarget.y);
+    setPlaytestMovementToward(moveTarget.x, moveTarget.y, targetDoor);
 
     if (targetDoor && !targetDoor.open) {
         const doorCenter = getDoorCenter(targetDoor);
@@ -3976,6 +4094,8 @@ const WAYPOINTS = {
     GATE_DOG_CHICKEN_TOP: makeDoorWaypoint('Dog Yard → Chicken Yard (top gate)', ['DOG_YARD', 'CHICKEN_YARD']),
     GATE_DOG_CHICKEN_BOTTOM: makeDoorWaypoint('Dog Yard → Chicken Yard (bottom gate)', ['DOG_YARD', 'CHICKEN_YARD']),
 
+    DOG_YARD_TOP: makeWaypoint(OUTDOOR_LAYOUT.SPRINKLER.rawX, OUTDOOR_LAYOUT.SPRINKLER.rawY, ['DOG_YARD'], ['DOG_YARD']),
+
     // Room centers
     LIVING_ROOM: makeRoomWaypoint('LIVING_ROOM', ['DOOR_CORRIDOR_L_LIVING', 'DOOR_KITCHEN_LIVING', 'DOOR_LIVING_CORRIDOR_R', 'DOOR_LIVING_PATIO', 'DOOR_LIVING_DOG_PATIO']),
     KITCHEN: makeRoomWaypoint('KITCHEN', ['DOOR_KITCHEN_LIVING', 'DOOR_KITCHEN_CORRIDOR_L']),
@@ -3988,11 +4108,11 @@ const WAYPOINTS = {
     HOUSEMATE_ROOM: makeRoomWaypoint('HOUSEMATE_ROOM', ['DOOR_CORRIDOR_R_HOUSEMATE']),
     HOME_OFFICE: makeRoomWaypoint('HOME_OFFICE', ['DOOR_CORRIDOR_R_OFFICE']),
     SPARE_ROOM: makeRoomWaypoint('SPARE_ROOM', ['DOOR_CORRIDOR_R_SPARE']),
-    PATIO_MAIN: makeRoomWaypoint('PATIO_MAIN', ['DOOR_LIVING_PATIO']),
-    PATIO_STRIP: makeRoomWaypoint('PATIO_STRIP', ['DOOR_CORRIDOR_R_PATIO_STRIP']),
-    DOG_PATIO: makeRoomWaypoint('DOG_PATIO', ['DOOR_LIVING_DOG_PATIO', 'DOOR_MASTER_DOG_PATIO']),
-    DOG_YARD: makeRoomWaypoint('DOG_YARD', ['DOOR_YARD_SHED', 'GATE_YARD_CHICKEN_RUN', 'GATE_DOG_CHICKEN_TOP', 'GATE_DOG_CHICKEN_BOTTOM']),
-    CHICKEN_YARD: makeRoomWaypoint('CHICKEN_YARD', ['GATE_DOG_CHICKEN_TOP', 'GATE_DOG_CHICKEN_BOTTOM']),
+    PATIO_MAIN: makeRoomWaypoint('PATIO_MAIN', ['DOOR_LIVING_PATIO', 'CHICKEN_YARD']),
+    PATIO_STRIP: makeRoomWaypoint('PATIO_STRIP', ['DOOR_CORRIDOR_R_PATIO_STRIP', 'CHICKEN_YARD']),
+    DOG_PATIO: makeRoomWaypoint('DOG_PATIO', ['DOOR_LIVING_DOG_PATIO', 'DOOR_MASTER_DOG_PATIO', 'DOG_YARD']),
+    DOG_YARD: makeRoomWaypoint('DOG_YARD', ['DOOR_YARD_SHED', 'GATE_YARD_CHICKEN_RUN', 'GATE_DOG_CHICKEN_TOP', 'GATE_DOG_CHICKEN_BOTTOM', 'DOG_PATIO', 'DOG_YARD_TOP']),
+    CHICKEN_YARD: makeRoomWaypoint('CHICKEN_YARD', ['GATE_DOG_CHICKEN_TOP', 'GATE_DOG_CHICKEN_BOTTOM', 'PATIO_MAIN', 'PATIO_STRIP']),
     SHED: makeRoomWaypoint('SHED', ['DOOR_YARD_SHED']),
     CHICKEN_RUN: makeRoomWaypoint('CHICKEN_RUN', ['GATE_YARD_CHICKEN_RUN', 'DOOR_RUN_COOP']),
     CHICKEN_COOP: makeRoomWaypoint('CHICKEN_COOP', ['DOOR_RUN_COOP'])
@@ -4034,7 +4154,7 @@ function waypointTouchesRoom(waypointName, roomKey) {
     if (!roomKey) return false;
     if (waypointName === roomKey) return true;
     const waypoint = WAYPOINTS[waypointName];
-    return !!waypoint && waypoint.connections.includes(roomKey);
+    return !!waypoint && Array.isArray(waypoint.rooms) && waypoint.rooms.includes(roomKey);
 }
 
 function getWaypointPathDistance(path) {
@@ -4051,6 +4171,16 @@ function getWaypointPathDistance(path) {
     return total;
 }
 
+function getRoomWaypointPenalty(waypointName) {
+    const waypoint = WAYPOINTS[waypointName];
+    if (!waypoint || isDoorWaypointName(waypointName)) return 0;
+
+    const connectionCount = waypoint.connections ? waypoint.connections.length : 0;
+    if (connectionCount >= 4) return 72;
+    if (connectionCount >= 3) return 24;
+    return 8;
+}
+
 function getWaypointCandidatesForPosition(x, y, bodySize = DAD_HITBOX_SIZE, maxCandidates = 6) {
     const roomKey = getRoomAt(x, y);
     const candidates = [];
@@ -4064,7 +4194,7 @@ function getWaypointCandidatesForPosition(x, y, bodySize = DAD_HITBOX_SIZE, maxC
             + (isDoorWaypointName(waypointName) ? 18 : 0)
             + (visible ? 0 : 120)
             + (inSameRoom ? 0 : 80)
-            - (isRoomCenter ? 40 : 0);
+            + (isRoomCenter ? getRoomWaypointPenalty(waypointName) : 0);
 
         candidates.push({
             waypoint: waypointName,
@@ -4080,12 +4210,20 @@ function getWaypointCandidatesForPosition(x, y, bodySize = DAD_HITBOX_SIZE, maxC
 
     const selected = [];
     const seen = new Set();
+    const sameRoomCandidates = candidates.filter(candidate => candidate.inSameRoom);
 
-    if (roomKey && WAYPOINTS[roomKey]) {
-        const roomCandidate = candidates.find(candidate => candidate.waypoint === roomKey);
-        if (roomCandidate) {
-            selected.push(roomCandidate);
-            seen.add(roomCandidate.waypoint);
+    for (const candidate of sameRoomCandidates) {
+        if (candidate.isRoomCenter || seen.has(candidate.waypoint)) continue;
+        selected.push(candidate);
+        seen.add(candidate.waypoint);
+        if (selected.length >= maxCandidates) break;
+    }
+
+    if (selected.length < maxCandidates) {
+        const roomCenterCandidate = sameRoomCandidates.find(candidate => candidate.isRoomCenter);
+        if (roomCenterCandidate && !seen.has(roomCenterCandidate.waypoint)) {
+            selected.push(roomCenterCandidate);
+            seen.add(roomCenterCandidate.waypoint);
         }
     }
 
@@ -4102,8 +4240,14 @@ function getWaypointCandidatesForPosition(x, y, bodySize = DAD_HITBOX_SIZE, maxC
 function findBestWaypointRoute(startX, startY, targetX, targetY, options = {}) {
     const bodySize = options.bodySize || DAD_HITBOX_SIZE;
     const routeContext = options.routeContext || null;
-    const startCandidates = getWaypointCandidatesForPosition(startX, startY, bodySize, 6);
-    const endCandidates = getWaypointCandidatesForPosition(targetX, targetY, bodySize, 4);
+    const rawStartCandidates = getWaypointCandidatesForPosition(startX, startY, bodySize, 6);
+    const rawEndCandidates = getWaypointCandidatesForPosition(targetX, targetY, bodySize, 4);
+    const startCandidates = rawStartCandidates.some(candidate => candidate.inSameRoom)
+        ? rawStartCandidates.filter(candidate => candidate.inSameRoom)
+        : rawStartCandidates;
+    const endCandidates = rawEndCandidates.some(candidate => candidate.inSameRoom)
+        ? rawEndCandidates.filter(candidate => candidate.inSameRoom)
+        : rawEndCandidates;
 
     let bestRoute = null;
 

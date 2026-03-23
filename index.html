@@ -37,17 +37,22 @@
         </div>
 
         <div id="playtest-panel">
-            <div id="playtest-title">PLAYTEST BOT</div>
-            <div id="playtest-status">OFFLINE</div>
-            <div class="playtest-section">
+            <div id="playtest-header">
+                <div id="playtest-heading">
+                    <div id="playtest-title">PLAYTEST BOT</div>
+                    <div id="playtest-status">OFFLINE</div>
+                </div>
+                <button class="playtest-btn" id="playtest-collapse" type="button">LESS</button>
+            </div>
+            <div class="playtest-section summary-section">
                 <div class="playtest-label">RUN SUMMARY</div>
                 <pre id="playtest-summary">Toggle the bot to start an autoplay run.</pre>
             </div>
-            <div class="playtest-section">
+            <div class="playtest-section details-section">
                 <div class="playtest-label">LIVE INFO</div>
                 <pre id="playtest-details">Waiting for run data.</pre>
             </div>
-            <div class="playtest-section">
+            <div class="playtest-section events-section">
                 <div class="playtest-label">EVENT LOG</div>
                 <pre id="playtest-events">No events yet.</pre>
             </div>
