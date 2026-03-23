@@ -2,7 +2,7 @@
 const TILE_SIZE = 20;
 const GAME_WIDTH = 1000;
 const GAME_HEIGHT = 700;
-const DAD_HITBOX_SIZE = 26;
+const DAD_HITBOX_SIZE = 22;
 const MAX_OVERSTIMULATION = 100;
 // Baseline stress model constants
 // How quickly stress rises while moving (points per second)
@@ -262,7 +262,10 @@ const OUTDOOR_LAYOUT = {
 
 const ROOM_WAYPOINT_OVERRIDES = {
     DOG_YARD: { x: RAW_ROOMS.DOG_YARD.x + 3, y: RAW_ROOMS.DOG_YARD.y + 20 },
-    CHICKEN_YARD: { x: RAW_ROOMS.CHICKEN_YARD.x + 22, y: RAW_ROOMS.CHICKEN_YARD.y + 20 }
+    CHICKEN_YARD: { x: RAW_ROOMS.CHICKEN_YARD.x + 22, y: RAW_ROOMS.CHICKEN_YARD.y + 20 },
+    HOUSEMATE_ROOM: { x: RAW_ROOMS.HOUSEMATE_ROOM.x + 4.8, y: RAW_ROOMS.HOUSEMATE_ROOM.y + 4.8 },
+    SPARE_ROOM: { x: RAW_ROOMS.SPARE_ROOM.x + 3.0, y: RAW_ROOMS.SPARE_ROOM.y + 6.2 },
+    DOG_PATIO: { x: RAW_ROOMS.DOG_PATIO.x + 16.0, y: RAW_ROOMS.DOG_PATIO.y + 3.2 }
 };
 
 const RAW_WALLS = [
@@ -306,20 +309,20 @@ for (const w of RAW_WALLS) {
 
 const RAW_DOORS = [
     { x: -262.0, y: -217.8, w: 2.0, h: 2.0, orient: 'h', name: 'Ensuite → Master Bedroom', open: true },
-    { x: -256.3, y: -211.4, w: 0.3, h: 2.8, orient: 'v', name: 'Master Bedroom → Corridor (left)', open: true },
+    { x: -256.15, y: -211.6, w: 0.3, h: 3.2, orient: 'v', name: 'Master Bedroom → Corridor (left)', open: true },
     { x: -254.2, y: -211.3, w: 2.4, h: 0.3, orient: 'h', name: 'Reading → Corridor (left)', open: true },
     { x: -246.6, y: -211.3, w: 2.4, h: 0.3, orient: 'h', name: 'Kitchen → Corridor (left)', open: true },
     { x: -249.9, y: -209.3, w: 2.4, h: 0.3, orient: 'h', name: 'Baby → Corridor (left)', open: true },
-    { x: -241.3, y: -211.4, w: 0.3, h: 2.8, orient: 'v', name: 'Corridor (left) → Living', open: true },
-    { x: -241.3, y: -220.0, w: 0.3, h: 3.2, orient: 'v', name: 'Kitchen → Living', open: true },
-    { x: -221.0, y: -212.4, w: 0.3, h: 2.8, orient: 'v', name: 'Living → Corridor (right)', open: true },
-    { x: -218.4, y: -212.3, w: 2.4, h: 0.3, orient: 'h', name: 'Corridor (right) → Housemate', open: true },
-    { x: -220.4, y: -210.3, w: 2.2, h: 0.3, orient: 'h', name: 'Corridor (right) → Office', open: true },
-    { x: -214.4, y: -210.3, w: 2.2, h: 0.3, orient: 'h', name: 'Corridor (right) → Spare', open: true },
-    { x: -221.7, y: -224.3, w: 2.0, h: 2.0, orient: 'v', name: 'Living → Patio', open: false },
-    { x: -211.0, y: -213.0, w: 2.0, h: 2.0, orient: 'v', name: 'Corridor (right) → Patio strip', open: false },
-    { x: -233.5, y: -200.0, w: 2.0, h: 2.0, orient: 'h', name: 'Living → Dog patio', open: false },
-    { x: -262.5, y: -200.0, w: 2.0, h: 2.0, orient: 'h', name: 'Master → Dog patio', open: false },
+    { x: -241.15, y: -211.6, w: 0.3, h: 3.2, orient: 'v', name: 'Corridor (left) → Living', open: true },
+    { x: -241.15, y: -220.3, w: 0.3, h: 3.8, orient: 'v', name: 'Kitchen → Living', open: true },
+    { x: -221.15, y: -212.6, w: 0.3, h: 3.2, orient: 'v', name: 'Living → Corridor (right)', open: true },
+    { x: -218.8, y: -212.15, w: 3.1, h: 0.3, orient: 'h', name: 'Corridor (right) → Housemate', open: true },
+    { x: -220.5, y: -210.15, w: 2.8, h: 0.3, orient: 'h', name: 'Corridor (right) → Office', open: true },
+    { x: -214.5, y: -210.15, w: 2.9, h: 0.3, orient: 'h', name: 'Corridor (right) → Spare', open: true },
+    { x: -221.15, y: -224.5, w: 0.3, h: 3.2, orient: 'v', name: 'Living → Patio', open: true },
+    { x: -210.15, y: -212.6, w: 0.3, h: 3.2, orient: 'v', name: 'Corridor (right) → Patio strip', open: true },
+    { x: -234.6, y: -199.15, w: 3.2, h: 0.3, orient: 'h', name: 'Living → Dog patio', open: true },
+    { x: -262.8, y: -199.15, w: 2.8, h: 0.3, orient: 'h', name: 'Master → Dog patio', open: true },
     { x: -202.0, y: -225.0, w: 14.0, h: 2.0, orient: 'h', name: 'Yard → Shed', open: false },
     { x: -195.0, y: -199.0, w: 2.0, h: 2.0, orient: 'h', name: 'Run → Coop', open: true },
     { x: -199.0, y: -206.0, w: 2.0, h: 7.0, orient: 'v', name: 'Yard → Chicken run (gate)', open: true },
@@ -563,6 +566,7 @@ let gameState = {
     beerClaimed: false,
     chickensLocked: false,
     sprinklerActive: false,
+    directPlayerIntentDoorName: null,
     isHidingInToilet: false,
     cameraScale: 1.0,
     cameraOffsetX: 0,
@@ -683,6 +687,7 @@ function initGame() {
     gameState.cameraScale = 1.0;
     gameState.cameraOffsetX = 0;
     gameState.cameraOffsetY = 0;
+    gameState.directPlayerIntentDoorName = null;
     gameState.notification = null;
     gameState.dad.x = (ROOMS.LIVING_ROOM.x + 5) * TILE_SIZE;
     gameState.dad.y = (ROOMS.LIVING_ROOM.y + 8) * TILE_SIZE;
@@ -831,11 +836,27 @@ function getWorldObjectCenter(key) {
     };
 }
 
+function getCoffeeInteractionPoint() {
+    const coffee = WORLD_OBJECTS.COFFEE_MACHINE;
+    if (!coffee) return null;
+
+    return {
+        x: Math.round((coffee.x + OFFSET_X + coffee.w / 2) * TILE_SIZE),
+        y: Math.round((coffee.y + OFFSET_Y + coffee.h + 1.8) * TILE_SIZE)
+    };
+}
+
 function getDoorCenter(door) {
     return {
         x: (door.x + door.w / 2) * TILE_SIZE,
         y: (door.y + door.h / 2) * TILE_SIZE
     };
+}
+
+function getDistanceToRectPoint(px, py, rect) {
+    const dx = Math.max(rect.x - px, 0, px - (rect.x + rect.w));
+    const dy = Math.max(rect.y - py, 0, py - (rect.y + rect.h));
+    return Math.hypot(dx, dy);
 }
 
 function getDoorForWaypointName(waypointName) {
@@ -1304,7 +1325,7 @@ function getDirectPlayerSnapshot() {
             couch: getWorldObjectCenter('COUCH'),
             bed: getWorldObjectCenter('BED'),
             toilet: getWorldObjectCenter('TOILET'),
-            coffee: getWorldObjectCenter('COFFEE_MACHINE'),
+            coffee: getCoffeeInteractionPoint(),
             sprinkler: { x: Math.round(POIS.SPRINKLER.x * TILE_SIZE), y: Math.round(POIS.SPRINKLER.y * TILE_SIZE) }
         },
         modal: {
@@ -1322,6 +1343,7 @@ function getDirectPlayerRoutePlan(targetX, targetY) {
     const canGoDirect = directDistance < 30 || hasLineOfSight(dadCenterX, dadCenterY, targetX, targetY, gameState.dad.width);
 
     if (canGoDirect) {
+        gameState.directPlayerIntentDoorName = null;
         return {
             directDistance: Math.round(directDistance),
             canGoDirect: true,
@@ -1336,6 +1358,7 @@ function getDirectPlayerRoutePlan(targetX, targetY) {
         routeContext: { canUseDoors: true }
     });
     if (!route || !route.waypoints || route.waypoints.length === 0) {
+        gameState.directPlayerIntentDoorName = null;
         return {
             directDistance: Math.round(directDistance),
             canGoDirect: false,
@@ -1367,6 +1390,7 @@ function getDirectPlayerRoutePlan(targetX, targetY) {
     }
 
     const targetDoor = serializeDirectPlayerDoor(getDoorForWaypointName(nextTarget.waypointName));
+    gameState.directPlayerIntentDoorName = targetDoor ? targetDoor.name : null;
     return {
         directDistance: Math.round(directDistance),
         canGoDirect: false,
@@ -1533,6 +1557,9 @@ function getVisibleRouteWaypoint(routeWaypoints, startIndex, originX, originY, b
     let fallbackTarget = null;
     let chosenTarget = null;
     const originRoomKey = getRoomAt(originX, originY);
+    const shouldAnchorInCurrentRoom = originRoomKey === 'CORRIDOR_LEFT'
+        || originRoomKey === 'CORRIDOR_RIGHT'
+        || originRoomKey === 'PATIO_STRIP';
 
     for (let index = startIndex; index < routeWaypoints.length; index++) {
         const waypointName = routeWaypoints[index];
@@ -1542,7 +1569,7 @@ function getVisibleRouteWaypoint(routeWaypoints, startIndex, originX, originY, b
             continue;
         }
 
-        if (waypointName === originRoomKey && index < routeWaypoints.length - 1) {
+        if (waypointName === originRoomKey && index < routeWaypoints.length - 1 && !shouldAnchorInCurrentRoom) {
             nextIndex = index + 1;
             continue;
         }
@@ -1560,6 +1587,9 @@ function getVisibleRouteWaypoint(routeWaypoints, startIndex, originX, originY, b
         if (hasLineOfSight(originX, originY, waypoint.pixelX, waypoint.pixelY, bodySize)) {
             chosenTarget = target;
             nextIndex = index;
+            if (isDoorWaypointName(waypointName)) {
+                break;
+            }
             continue;
         }
 
@@ -1639,7 +1669,7 @@ function setPlaytestMovementToward(targetX, targetY, targetDoor = null) {
     input.right = moveX > deadZone;
     input.up = moveY < -deadZone;
     input.down = moveY > deadZone;
-    input.sprinting = distance > 220 && gameState.sprintergyLeft > 25;
+    input.sprinting = !targetDoor && distance > 220 && gameState.sprintergyLeft > 25;
 }
 
 function cachePlaytestMoveTarget(moveTarget) {
@@ -1706,6 +1736,9 @@ function queuePlaytestRecovery(targetX, targetY) {
 }
 
 function getPlaytestObjective() {
+    const dadCenterX = gameState.dad.x + gameState.dad.width / 2;
+    const dadCenterY = gameState.dad.y + gameState.dad.height / 2;
+    const dadRoomKey = getRoomAt(dadCenterX, dadCenterY);
     const task = choosePlaytestTask();
     if (task) {
         const target = getTaskTargetPosition(task);
@@ -1745,8 +1778,8 @@ function getPlaytestObjective() {
     }
 
     if (playtestBot.currentRun && !playtestBot.currentRun.coffeeUsed && !gameState.coffeeBuff && gameState.time < 110 && gameState.overstimulation < 68 && gameState.tasks.length <= 2) {
-        const coffee = getWorldObjectCenter('COFFEE_MACHINE');
-        if (coffee) {
+        const coffee = getCoffeeInteractionPoint();
+        if (coffee && dadRoomKey === 'KITCHEN') {
             const coffeeObjective = { type: 'coffee', label: 'Brew coffee', targetX: coffee.x, targetY: coffee.y };
             if (!isPlaytestObjectiveBlocked(coffeeObjective)) {
                 return coffeeObjective;
@@ -3372,25 +3405,39 @@ function showModal(title, text) {
 }
 
 function findNearbyDoor() {
-    const threshold = 100; // Increased significantly for easier interaction with small doors
+    const threshold = 84;
     let closest = null;
-    let closestDist = threshold;
+    let closestScore = Infinity;
 
     const dadCenterX = gameState.dad.x + gameState.dad.width / 2;
     const dadCenterY = gameState.dad.y + gameState.dad.height / 2;
+    const preferredDoorName = playtestBot.lastTargetDoorName || gameState.directPlayerIntentDoorName || null;
+    const moveX = (input.right ? 1 : 0) - (input.left ? 1 : 0);
+    const moveY = (input.down ? 1 : 0) - (input.up ? 1 : 0);
+    const moveLength = Math.hypot(moveX, moveY);
 
     for (let i = 0; i < DOORS.length; i++) {
         const door = DOORS[i];
-        const doorW = door.w * TILE_SIZE;
-        const doorH = door.h * TILE_SIZE;
+        const center = getDoorCenter(door);
+        const rect = getDoorCollisionRect(door);
+        const edgeDist = getDistanceToRectPoint(dadCenterX, dadCenterY, rect);
+        if (edgeDist > threshold) {
+            continue;
+        }
 
-        // Door center based on actual dimensions (not thickened)
-        const doorX = door.x * TILE_SIZE + doorW / 2;
-        const doorY = door.y * TILE_SIZE + doorH / 2;
+        let score = edgeDist + Math.hypot(dadCenterX - center.x, dadCenterY - center.y) * 0.15;
+        if (preferredDoorName && door.name === preferredDoorName) {
+            score -= 18;
+        }
+        if (moveLength > 0) {
+            const dirX = (center.x - dadCenterX) / Math.max(1, Math.hypot(center.x - dadCenterX, center.y - dadCenterY));
+            const dirY = (center.y - dadCenterY) / Math.max(1, Math.hypot(center.x - dadCenterX, center.y - dadCenterY));
+            const alignment = (dirX * moveX + dirY * moveY) / moveLength;
+            score -= Math.max(0, alignment) * 12;
+        }
 
-        const dist = Math.hypot(dadCenterX - doorX, dadCenterY - doorY);
-        if (dist < closestDist) {
-            closestDist = dist;
+        if (score < closestScore) {
+            closestScore = score;
             closest = { ...door, index: i };
         }
     }
@@ -4181,7 +4228,30 @@ function getRoomWaypointPenalty(waypointName) {
     return 8;
 }
 
-function getWaypointCandidatesForPosition(x, y, bodySize = DAD_HITBOX_SIZE, maxCandidates = 6) {
+function getWaypointDirectionPenalty(x, y, waypoint, goalX, goalY) {
+    if (typeof goalX !== 'number' || typeof goalY !== 'number') {
+        return 0;
+    }
+
+    const targetDx = goalX - x;
+    const targetDy = goalY - y;
+    const targetDistance = Math.hypot(targetDx, targetDy);
+    if (targetDistance < 80) {
+        return 0;
+    }
+
+    const waypointDx = waypoint.pixelX - x;
+    const waypointDy = waypoint.pixelY - y;
+    const waypointDistance = Math.hypot(waypointDx, waypointDy);
+    if (waypointDistance < 1) {
+        return 0;
+    }
+
+    const alignment = ((targetDx * waypointDx) + (targetDy * waypointDy)) / (targetDistance * waypointDistance);
+    return Math.max(0, 1 - alignment) * 90;
+}
+
+function getWaypointCandidatesForPosition(x, y, bodySize = DAD_HITBOX_SIZE, maxCandidates = 6, goalX = null, goalY = null) {
     const roomKey = getRoomAt(x, y);
     const candidates = [];
 
@@ -4194,7 +4264,8 @@ function getWaypointCandidatesForPosition(x, y, bodySize = DAD_HITBOX_SIZE, maxC
             + (isDoorWaypointName(waypointName) ? 18 : 0)
             + (visible ? 0 : 120)
             + (inSameRoom ? 0 : 80)
-            + (isRoomCenter ? getRoomWaypointPenalty(waypointName) : 0);
+            + (isRoomCenter ? getRoomWaypointPenalty(waypointName) : 0)
+            + getWaypointDirectionPenalty(x, y, waypoint, goalX, goalY);
 
         candidates.push({
             waypoint: waypointName,
@@ -4240,8 +4311,8 @@ function getWaypointCandidatesForPosition(x, y, bodySize = DAD_HITBOX_SIZE, maxC
 function findBestWaypointRoute(startX, startY, targetX, targetY, options = {}) {
     const bodySize = options.bodySize || DAD_HITBOX_SIZE;
     const routeContext = options.routeContext || null;
-    const rawStartCandidates = getWaypointCandidatesForPosition(startX, startY, bodySize, 6);
-    const rawEndCandidates = getWaypointCandidatesForPosition(targetX, targetY, bodySize, 4);
+    const rawStartCandidates = getWaypointCandidatesForPosition(startX, startY, bodySize, 6, targetX, targetY);
+    const rawEndCandidates = getWaypointCandidatesForPosition(targetX, targetY, bodySize, 4, startX, startY);
     const startCandidates = rawStartCandidates.some(candidate => candidate.inSameRoom)
         ? rawStartCandidates.filter(candidate => candidate.inSameRoom)
         : rawStartCandidates;
@@ -5370,7 +5441,7 @@ function checkToiletHiding(x, y) {
 }
 
 function checkCoffeeMachine(x, y) {
-    const INTERACT_DIST = 40;
+    const INTERACT_DIST = 56;
     const coffee = WORLD_OBJECTS.COFFEE_MACHINE;
     
     if (!coffee) return false;

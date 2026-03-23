@@ -343,7 +343,11 @@ class DirectPlayerBot:
             and len(snapshot["tasks"]) <= 2
         ):
             coffee = self.make_static_objective(snapshot, "coffee", "Brew coffee")
-            if coffee and not self.is_blocked(coffee, snapshot_time):
+            if (
+                coffee
+                and not self.is_blocked(coffee, snapshot_time)
+                and snapshot["dad"]["roomKey"] == "KITCHEN"
+            ):
                 return coffee
 
         living = snapshot["pois"]["livingRoom"]
@@ -408,7 +412,7 @@ class DirectPlayerBot:
             down=move_y > dead_zone,
             left=move_x < -dead_zone,
             right=move_x > dead_zone,
-            sprinting=distance > 220 and snapshot["sprintEnergy"] > 25,
+            sprinting=door_orient is None and distance > 220 and snapshot["sprintEnergy"] > 25,
             actionHeld=action_held,
         )
 
@@ -515,7 +519,7 @@ class DirectPlayerBot:
         door_orient = target_door.get("orient") if target_door else None
         self.move_toward(snapshot, next_target["x"], next_target["y"], door_orient=door_orient)
 
-        if target_door and not target_door["open"] and target_door["distance"] <= 72:
+        if target_door and not target_door["open"] and target_door["distance"] <= 84:
             self.tap("action")
 
     def reset_run_state(self) -> None:
