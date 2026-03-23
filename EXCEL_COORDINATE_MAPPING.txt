@@ -1,0 +1,235 @@
+╔══════════════════════════════════════════════════════════════════════════════╗
+║           EXCEL HOUSE MAP - COORDINATE MAPPING GUIDE                         ║
+║                                                                              ║
+║  This guide helps you map game coordinates onto your Excel spreadsheet      ║
+╚══════════════════════════════════════════════════════════════════════════════╝
+
+
+═══════════════════════════════════════════════════════════════════════════════
+                        HOW THE MAPPING WORKS
+═══════════════════════════════════════════════════════════════════════════════
+
+In the Excel file:
+- Each CELL = 1 game tile (20 pixels)
+- ROW numbers in Excel = ACTUAL Y coordinates in game
+- COLUMN letters in Excel = ACTUAL X coordinates in game
+
+COLUMN MAPPING (Excel Column → ACTUAL X coordinate):
+  A=0,  B=1,  C=2,  D=3,  E=4,  F=5,  G=6,  H=7,  I=8,  J=9,
+  K=10, L=11, M=12, N=13, O=14, P=15, Q=16, R=17, S=18, T=19,
+  U=20, V=21, W=22, X=23, Y=24, Z=25, AA=26, AB=27, AC=28, AD=29,
+  AE=30, AF=31, AG=32, AH=33, AI=34, AJ=35, AK=36, AL=37, AM=38, AN=39,
+  AO=40, AP=41, AQ=42, AR=43, AS=44, AT=45, AU=46, AV=47, AW=48, AX=49,
+  AY=50, AZ=51, BA=52, BB=53, BC=54, BD=55, BE=56, BF=57, BG=58, BH=59,
+  BI=60, BJ=61, BK=62, BL=63, BM=64, BN=65, BO=66, BP=67, BQ=68, BR=69,
+  BS=70, BT=71, BU=72, BV=73, BW=74, BX=75, BY=76, BZ=77, CA=78, CB=79,
+  CC=80, CD=81, CE=82, CF=83
+
+ROW MAPPING (Excel Row → ACTUAL Y coordinate):
+  Row 1 = Y:0,  Row 2 = Y:1,  Row 3 = Y:2,  ... Row 47 = Y:46
+
+
+═══════════════════════════════════════════════════════════════════════════════
+                  ROOM POSITIONS IN EXCEL COORDINATES
+═══════════════════════════════════════════════════════════════════════════════
+
+Each room's Excel range (top-left to bottom-right):
+
+ROOM NAME              EXCEL RANGE          SIZE (cols×rows)   ACTUAL (x,y,w,h)
+─────────────────────────────────────────────────────────────────────────────
+DOG_YARD              B1:AW46              48×46              (1,0,48,46)
+CHICKEN_YARD          AX1:CE46             34×46              (49,0,34,46)
+SHED                  BR2:CF9              14×8               (68,1,14,8)
+CHICKEN_RUN           BU22:CC41            9×20               (72,21,9,20)
+CHICKEN_COOP          BX34:CA35            4×2                (75,33,4,2)
+
+LIVING_ROOM           AD8:AW34             20×27              (29,7,20,27)
+KITCHEN               V8:AC20              8×13               (21,7,8,13)
+READING__DOG_ROOM     O8:U20               7×13               (14,7,7,13)
+BABYS_ROOM            O26:AC34             15×9               (14,25,15,9)
+MASTER_BEDROOM        G17:N34              8×18               (6,16,8,18)
+ENSUITE               G8:N16               8×9                (6,7,8,9)
+
+HOUSEMATE_ROOM        AX15:BI19            11×5               (49,14,11,5)
+HOME_OFFICE           AX25:BC34            5×10               (49,24,5,10)
+SPARE_ROOM            BC25:BH34            6×10               (54,24,6,10)
+
+CORRIDOR_RIGHT        AX20:BI24            11×5               (49,19,11,5)
+CORRIDOR_LEFT         O21:AC25             15×5               (14,20,15,5)
+
+PATIO_MAIN            AX8:BL14             15×7               (49,7,15,7)
+PATIO_STRIP           BI15:BL34            4×20               (60,14,4,20)
+DOG_PATIO             G35:AW39             43×5               (6,34,43,5)
+
+
+═══════════════════════════════════════════════════════════════════════════════
+            WAYPOINT POSITIONS IN EXCEL (DOOR & ROOM CENTERS)
+═══════════════════════════════════════════════════════════════════════════════
+
+Add these as markers/notes in your Excel file:
+
+WAYPOINT NAME                EXCEL CELL    ACTUAL (x,y)    TYPE
+────────────────────────────────────────────────────────────────
+DOOR_ENSUITE_MASTER          J17           (9, 16.2)       Door
+DOOR_MASTER_CORRIDOR_L       O22           (14, 21.5)      Door
+DOOR_READING_CORRIDOR_L      Q21           (16.7, 20)      Door
+DOOR_KITCHEN_CORRIDOR_L      Y21           (24.3, 20)      Door
+DOOR_BABY_CORRIDOR_L         V26           (21, 25)        Door
+DOOR_CORRIDOR_L_LIVING       AD22          (29, 21.5)      Door
+DOOR_KITCHEN_LIVING          AD15          (29, 14)        Door
+DOOR_LIVING_CORRIDOR_R       AX22          (49.3, 21)      Door
+DOOR_CORRIDOR_R_HOUSEMATE    BA20          (52.5, 19)      Door
+DOOR_CORRIDOR_R_OFFICE       AY25          (50.5, 24)      Door
+DOOR_CORRIDOR_R_SPARE        BE25          (56.5, 24)      Door
+DOOR_LIVING_PATIO            AX10          (49.3, 9.7)     Door
+DOOR_CORRIDOR_R_PATIO_STRIP  BI22          (60, 21)        Door
+DOOR_LIVING_DOG_PATIO        AL35          (37.5, 34)      Door
+DOOR_MASTER_DOG_PATIO        I35           (8.5, 34)       Door
+DOOR_YARD_SHED               BX10          (75, 9)         Door
+DOOR_RUN_COOP                BX36          (76, 35)        Door
+GATE_YARD_CHICKEN_RUN        BU22          (72, 21)        Gate
+GATE_DOG_CHICKEN_TOP         AX5           (49.3, 4.25)    Gate
+GATE_DOG_CHICKEN_BOTTOM      AX40          (49.3, 39.25)   Gate
+
+LIVING_ROOM (center)         AN22          (39, 21)        Room
+KITCHEN (center)             Z15           (25, 14)        Room
+READING (center)             S15           (18, 14)        Room
+CORRIDOR_LEFT (center)       W24           (22, 23)        Room
+CORRIDOR_RIGHT (center)      BD23          (55, 22)        Room
+MASTER_BEDROOM (center)      K26           (10, 25)        Room
+ENSUITE (center)             K13           (10, 12)        Room
+BABYS_ROOM (center)          W31           (22, 30)        Room
+HOUSEMATE_ROOM (center)      BD18          (55, 17)        Room
+HOME_OFFICE (center)         BA30          (52, 29)        Room
+SPARE_ROOM (center)          BF30          (57, 29)        Room
+PATIO_MAIN (center)          BF12          (57, 11)        Room
+PATIO_STRIP (center)         BK25          (62, 24)        Room
+DOG_PATIO (center)           AC38          (28, 37)        Room
+DOG_YARD (center)            Z23           (25, 22)        Room
+CHICKEN_YARD (center)        BO23          (66, 22)        Room
+SHED (center)                BX6           (75, 5)         Room
+CHICKEN_RUN (center)         BZ32          (77, 31)        Room
+CHICKEN_COOP (center)        BZ35          (77, 34)        Room
+
+
+═══════════════════════════════════════════════════════════════════════════════
+         CHARACTER STARTING POSITIONS IN EXCEL COORDINATES
+═══════════════════════════════════════════════════════════════════════════════
+
+CHARACTER    EXCEL CELL    ACTUAL (x,y)    RAW (x,y)         ROOM
+────────────────────────────────────────────────────────────────────
+Dad          AI16          (34, 15)        (-236, -218)      LIVING_ROOM
+Wife         X10           (23, 9)         (-247, -224)      KITCHEN
+Jake         BE27          (56, 26)        (-214, -207)      SPARE_ROOM
+Baby         S28           (18, 27)        (-252, -206)      BABYS_ROOM
+Momo         AG18          (32, 17)        (-238, -216)      LIVING_ROOM
+Piper        AI18          (34, 17)        (-236, -216)      LIVING_ROOM
+
+
+═══════════════════════════════════════════════════════════════════════════════
+              HOW TO ADD COORDINATE LABELS TO YOUR EXCEL
+═══════════════════════════════════════════════════════════════════════════════
+
+Option 1: Add Row/Column Headers
+─────────────────────────────────
+1. In Row 0 (freeze this row):
+   - A0: "0", B0: "1", C0: "2" ... CF0: "83"
+   - Or every 5: A0: "0", F0: "5", K0: "10", P0: "15", etc.
+
+2. In Column before A (freeze this column):
+   - Row 1: "0", Row 2: "1", Row 3: "2" ... Row 47: "46"
+   - Or every 5: Row 1: "0", Row 6: "5", Row 11: "10", etc.
+
+
+Option 2: Add RAW Coordinate Headers
+─────────────────────────────────────
+1. In Row 0:
+   - A0: "-270", B0: "-269", C0: "-268" ... CF0: "-187"
+
+2. In Column before A:
+   - Row 1: "-233", Row 2: "-232" ... Row 47: "-187"
+
+
+Option 3: Use Cell Comments/Notes
+──────────────────────────────────
+Add notes to key cells:
+- Room centers: "LIVING_ROOM center (39,21) / RAW(-231,-212)"
+- Doors: "DOOR_KITCHEN_LIVING (29,14) / RAW(-241,-219)"
+- Character starts: "Dad starts here (34,15) / RAW(-236,-218)"
+
+
+═══════════════════════════════════════════════════════════════════════════════
+                    QUICK REFERENCE FORMULAS
+═══════════════════════════════════════════════════════════════════════════════
+
+To convert Excel cell to game coordinates:
+
+ACTUAL X = Excel Column Number - 1
+         (A=0, B=1, C=2, ... CF=83)
+
+ACTUAL Y = Excel Row Number - 1
+         (Row 1 = 0, Row 2 = 1, ... Row 47 = 46)
+
+RAW X = ACTUAL X - 270
+RAW Y = ACTUAL Y - 233
+
+PIXEL X = ACTUAL X × 20
+PIXEL Y = ACTUAL Y × 20
+
+
+Example: Cell AH20
+- Column AH = 33 → ACTUAL X = 33, RAW X = -237, PIXEL X = 660
+- Row 20 = 20 → ACTUAL Y = 19, RAW Y = -214, PIXEL Y = 380
+- This cell is at game position ACTUAL(33,19) / RAW(-237,-214) / PIXELS(660,380)
+
+
+═══════════════════════════════════════════════════════════════════════════════
+                         VALIDATION CHECKLIST
+═══════════════════════════════════════════════════════════════════════════════
+
+To verify your Excel mapping is correct:
+
+✓ Living Room should be centered around cell AN22 (column 39, row 21)
+✓ Kitchen should be in top-left area around cell Z15 (column 25, row 14)
+✓ Dog Yard should fill most of columns B-AW, rows 1-46 (left side)
+✓ Chicken areas should be on the right side (columns AX onward)
+✓ Dog Patio should be a wide horizontal strip at bottom (row 35-39)
+✓ Dad starts in Living Room at cell AI16
+✓ Corridors connect rooms in the middle area
+✓ Total map should be approximately 84 columns × 47 rows
+
+
+═══════════════════════════════════════════════════════════════════════════════
+                      PYTHON SCRIPT TO ADD COORDINATES
+═══════════════════════════════════════════════════════════════════════════════
+
+Save this as add_coordinates.py and run it to automatically add coordinate labels:
+
+```python
+import openpyxl
+from openpyxl.styles import Font, Alignment
+
+# Load workbook
+wb = openpyxl.load_workbook('house_map.xlsx')
+ws = wb.active
+
+# Add column headers (ACTUAL X coordinates) - every 5 columns
+for col in range(0, 84, 5):
+    cell = ws.cell(1, col + 2)  # +2 because col 1 is for Y labels
+    cell.value = str(col)
+    cell.font = Font(bold=True, size=8)
+    cell.alignment = Alignment(horizontal='center')
+
+# Add row headers (ACTUAL Y coordinates) - every 5 rows
+for row in range(0, 47, 5):
+    cell = ws.cell(row + 2, 1)  # +2 because row 1 is for X labels
+    cell.value = str(row)
+    cell.font = Font(bold=True, size=8)
+    cell.alignment = Alignment(horizontal='center', vertical='center')
+
+# Save
+wb.save('house_map_with_coordinates.xlsx')
+print("Saved to house_map_with_coordinates.xlsx")
+```
+
+Run with: python add_coordinates.py

@@ -1,0 +1,320 @@
+╔══════════════════════════════════════════════════════════════════════════════╗
+║                    OVERSTIMULATED - HOUSE MAP REFERENCE                      ║
+║                                                                              ║
+║  COORDINATE SYSTEM EXPLAINED:                                               ║
+║  - RAW coordinates: Negative values (what you see in code: -269, -233, etc.)║
+║  - ACTUAL coordinates: RAW + OFFSET (OFFSET_X=270, OFFSET_Y=233)            ║
+║  - PIXEL coordinates: ACTUAL × TILE_SIZE (TILE_SIZE = 20px)                 ║
+║                                                                              ║
+║  Example: Living Room                                                       ║
+║    RAW: x=-241, y=-226                                                      ║
+║    ACTUAL: x=29, y=7  (after adding OFFSET_X and OFFSET_Y)                 ║
+║    PIXELS: x=580, y=140  (multiply by TILE_SIZE=20)                        ║
+║                                                                              ║
+║  WHEN MOVING THINGS:                                                        ║
+║  - Positive X = Move RIGHT                                                  ║
+║  - Negative X = Move LEFT                                                   ║
+║  - Positive Y = Move DOWN                                                   ║
+║  - Negative Y = Move UP                                                     ║
+╚══════════════════════════════════════════════════════════════════════════════╝
+
+
+═══════════════════════════════════════════════════════════════════════════════
+                            GRID-BASED HOUSE MAP
+═══════════════════════════════════════════════════════════════════════════════
+
+Legend:
+  # = Wall
+  . = Floor space (walkable)
+  D = Door
+  d = Dad starting position
+  w = Wife starting position
+  j = Jake (housemate) starting position
+  p = Piper (black dog) starting position
+  m = Momo (brown dog) starting position
+  b = Baby starting position
+
+Each character = 1 tile (20 pixels)
+X-axis increases RIGHTWARD (left to right)
+Y-axis increases DOWNWARD (top to bottom)
+
+RAW X: -270 to -187  →  ACTUAL X: 0 to 83
+RAW Y: -233 to -187  →  ACTUAL Y: 0 to 46
+
+X-AXIS (showing every 5 tiles, ACTUAL coordinates):
+     0    5    10   15   20   25   30   35   40   45   50   55   60   65   70   75   80
+     |    |    |    |    |    |    |    |    |    |    |    |    |    |    |    |    |
+0  ###############################################################################        -233
+   #.................................................#...............................#
+   #.................................................#...............................#
+   #.................................................#....................#######...#
+   #.................................................#....................#.....#...#
+5  #.................................................#....................#.....#...#  -228
+   #.................................................#....................#.....#...#
+   #......#######................................DDDD#....................#######...#
+   #......#.....#........#######....................#...............................#
+   #......#.....#........#.....#....................#...............................#
+10 #......#.....#........#.....#....................#...............................#  -223
+   #......#.....#........#.....#....................#..###############..............#
+   #......#.....#........#.....#....................#..#.............#..............#
+   #......#.....#........#.....#....................#..#.............#..............#
+   #......#.....D........#.....#....................D..#.............#..............#
+15 #......#.....#........#.....#....................#..#.............#..............#  -218
+   #......#######........#.....#........d.pm........#..#.............#..............#
+   #......#..............#.....#....................#..#############D#..............#
+   #......#..............#.....#....................#.............................D.#
+   #......#..............#.....#....................#..............#..........#....##
+20 #......#..............#######D###############D####..............#..........#.....#  -213
+   #......#..............#...........................#.............#..........#.....#
+   #......#..............#...........................#.............#..........#.....#
+   #......#..............#...........................#.............#..........#.....#
+   #......#..............#...........................#.............#..........#.....#
+25 #......################...........########D########.......D#####..........#######  -208
+   #......#..............#...........#.....#..#.....#..........#.#..........#.......#
+   #......#......b.......#...........#.....#..#..j..#..........#.#..........#.......#
+   #......#..............#...........#.....#..#.....#..........#.#..........#.......#
+   #......#..............#...........#.....#..#.....#..........#.#..........#.......#
+30 #......#..............#...........#######..#######..........#.#..........#.......#  -203
+   #......#..............#...........#.....#..#.....#..........#.#..........#.......#
+   #......#..............#...........#.....#..#.....#..........#.#..........#.......#
+   #......#..............#...........#######..#######..........#D#..........#...##..#
+   #DDDDDD################.............................########.#..........##...#D..#
+35 #...............................................................#..........#...##..#  -198
+   #...............................................................#..........#.......#
+   #...............................................................#..........#.......#
+   #...............................................................#..........#.......#
+   #...............................................................#..........#.......#
+40 #...............................................................#..........#.......#  -193
+   #...............................................................#..........#.......#
+   #...............................................................#..........#.......#
+   #...............................................................###########.......#
+   #.........................................................................#.......#
+45 #.........................................................................#########  -188
+   ###############################################################################
+                                                                                      -187
+     |    |    |    |    |    |    |    |    |    |    |    |    |    |    |    |    |
+     0    5    10   15   20   25   30   35   40   45   50   55   60   65   70   75   80
+
+Y
+-233  ROOM KEY (showing center positions in ACTUAL coordinates):
+-228  DOG_YARD (25, 23) | CHICKEN_YARD (66, 23) | SHED (75, 5)
+-223  ENSUITE (10, 11) | MASTER_BEDROOM (10, 25) | KITCHEN (25, 13)
+-218  READING/DOG (17, 13) | LIVING_ROOM (39, 20) | PATIO_MAIN (56, 10)
+-213  CORRIDOR_LEFT (21, 22) | CORRIDOR_RIGHT (54, 21) | HOUSEMATE_ROOM (54, 16)
+-208  BABYS_ROOM (21, 29) | HOME_OFFICE (51, 28) | SPARE_ROOM (57, 28)
+-203  CHICKEN_RUN (76, 31) | CHICKEN_COOP (77, 34) | PATIO_STRIP (62, 24)
+-198  DOG_PATIO (27, 36)
+-193
+-188
+
+
+═══════════════════════════════════════════════════════════════════════════════
+                         ROOM COORDINATES TABLE
+═══════════════════════════════════════════════════════════════════════════════
+
+ROOM NAME              RAW (x, y)      ACTUAL (x,y)    SIZE (w×h)    PIXEL (x,y)
+─────────────────────────────────────────────────────────────────────────────
+DOG_YARD              (-269, -233)    (1, 0)          48×46         (20, 0)
+CHICKEN_YARD          (-221, -233)    (49, 0)         34×46         (980, 0)
+SHED                  (-202, -232)    (68, 1)         14×8          (1360, 20)
+CHICKEN_RUN           (-198, -212)    (72, 21)        9×20          (1440, 420)
+CHICKEN_COOP          (-195, -200)    (75, 33)        4×2           (1500, 660)
+
+LIVING_ROOM           (-241, -226)    (29, 7)         20×27         (580, 140)
+KITCHEN               (-249, -226)    (21, 7)         8×13          (420, 140)
+READING__DOG_ROOM     (-256, -226)    (14, 7)         7×13          (280, 140)
+BABYS_ROOM            (-256, -208)    (14, 25)        15×9          (280, 500)
+MASTER_BEDROOM        (-264, -217)    (6, 16)         8×18          (120, 320)
+ENSUITE               (-264, -226)    (6, 7)          8×9           (120, 140)
+
+HOUSEMATE_ROOM        (-221, -219)    (49, 14)        11×5          (980, 280)
+HOME_OFFICE           (-221, -209)    (49, 24)        5×10          (980, 480)
+SPARE_ROOM            (-216, -209)    (54, 24)        6×10          (1080, 480)
+
+CORRIDOR_RIGHT        (-221, -214)    (49, 19)        11×5          (980, 380)
+CORRIDOR_LEFT         (-256, -213)    (14, 20)        15×5          (280, 400)
+
+PATIO_MAIN            (-221, -226)    (49, 7)         15×7          (980, 140)
+PATIO_STRIP           (-210, -219)    (60, 14)        4×20          (1200, 280)
+DOG_PATIO             (-264, -199)    (6, 34)         43×5          (120, 680)
+
+
+═══════════════════════════════════════════════════════════════════════════════
+                         STARTING POSITIONS
+═══════════════════════════════════════════════════════════════════════════════
+
+CHARACTER    ROOM                RAW (x, y)         ACTUAL (x,y)    PIXEL (x,y)
+─────────────────────────────────────────────────────────────────────────────
+Dad          LIVING_ROOM         (-236, -218)       (34, 15)        (680, 300)
+Wife         KITCHEN             (-247, -224)       (23, 9)         (460, 180)
+Jake         SPARE_ROOM          (-214, -207)       (56, 26)        (1120, 520)
+Baby         BABYS_ROOM          (-252, -206)       (18, 27)        (360, 540)
+Momo         LIVING_ROOM         (-238, -216)       (32, 17)        (640, 340)
+Piper        LIVING_ROOM         (-236, -216)       (34, 17)        (680, 340)
+
+
+═══════════════════════════════════════════════════════════════════════════════
+                         QUICK REFERENCE CONVERSIONS
+═══════════════════════════════════════════════════════════════════════════════
+
+To convert RAW → ACTUAL:      actual_x = raw_x + 270
+                              actual_y = raw_y + 233
+
+To convert ACTUAL → PIXELS:   pixel_x = actual_x × 20
+                              pixel_y = actual_y × 20
+
+To convert RAW → PIXELS:      pixel_x = (raw_x + 270) × 20
+                              pixel_y = (raw_y + 233) × 20
+
+
+EXAMPLE: Moving something 5 tiles to the RIGHT:
+  - In RAW coords: change x from -241 to -236  (add +5)
+  - In ACTUAL coords: change x from 29 to 34   (add +5)
+  - In PIXELS: change x from 580 to 680        (add +100)
+
+EXAMPLE: Moving something 3 tiles UP:
+  - In RAW coords: change y from -226 to -229  (subtract -3, more negative)
+  - In ACTUAL coords: change y from 7 to 4     (subtract -3)
+  - In PIXELS: change y from 140 to 80         (subtract -60)
+
+
+═══════════════════════════════════════════════════════════════════════════════
+                              DOOR LOCATIONS
+═══════════════════════════════════════════════════════════════════════════════
+
+DOOR NAME                           RAW (x,y)        OPEN?   ORIENTATION
+───────────────────────────────────────────────────────────────────────────────
+Ensuite → Master Bedroom            (-262, -217.8)   YES     Horizontal
+Master Bedroom → Corridor (left)    (-257, -212.5)   YES     Vertical
+Reading → Corridor (left)           (-254.3, -214)   YES     Horizontal
+Kitchen → Corridor (left)           (-246.7, -214)   YES     Horizontal
+Baby → Corridor (left)              (-250, -209)     YES     Horizontal
+Corridor (left) → Living            (-242, -212.5)   YES     Vertical
+Kitchen → Living                    (-242, -220)     YES     Vertical
+Living → Corridor (right)           (-221.7, -213)   YES     Vertical
+Corridor (right) → Housemate        (-218.5, -215)   YES     Horizontal
+Corridor (right) → Office           (-220.5, -210)   YES     Horizontal
+Corridor (right) → Spare            (-214.5, -210)   YES     Horizontal
+Living → Patio                      (-221.7, -224.3) NO      Vertical
+Corridor (right) → Patio strip      (-211, -213)     NO      Vertical
+Living → Dog patio                  (-233.5, -200)   NO      Horizontal
+Master → Dog patio                  (-262.5, -200)   NO      Horizontal
+Yard → Shed                         (-202, -225)     NO      Horizontal
+Run → Coop                          (-195, -199)     YES     Horizontal
+Yard → Chicken run (gate)           (-199, -206)     YES     Vertical (GIANT)
+Dog Yard → Chicken Yard (top)       (-221.7, -230)   NO      Vertical
+Dog Yard → Chicken Yard (bottom)    (-221.7, -193)   NO      Vertical
+
+
+═══════════════════════════════════════════════════════════════════════════════
+                    WAYPOINTS / PATHFINDING NODES TABLE
+═══════════════════════════════════════════════════════════════════════════════
+
+WAYPOINT NAME                RAW (x, y)       ACTUAL (x,y)    PIXEL (x,y)      TYPE
+─────────────────────────────────────────────────────────────────────────────────
+DOOR_ENSUITE_MASTER          (-261, -216.8)   (9, 16.2)       (180, 324)       Door
+DOOR_MASTER_CORRIDOR_L       (-256, -211.5)   (14, 21.5)      (280, 430)       Door
+DOOR_READING_CORRIDOR_L      (-253.3, -213)   (16.7, 20)      (334, 400)       Door
+DOOR_KITCHEN_CORRIDOR_L      (-245.7, -213)   (24.3, 20)      (486, 400)       Door
+DOOR_BABY_CORRIDOR_L         (-249, -208)     (21, 25)        (420, 500)       Door
+DOOR_CORRIDOR_L_LIVING       (-241, -211.5)   (29, 21.5)      (580, 430)       Door
+DOOR_KITCHEN_LIVING          (-241, -219)     (29, 14)        (580, 280)       Door
+DOOR_LIVING_CORRIDOR_R       (-220.7, -212)   (49.3, 21)      (986, 420)       Door
+DOOR_CORRIDOR_R_HOUSEMATE    (-217.5, -214)   (52.5, 19)      (1050, 380)      Door
+DOOR_CORRIDOR_R_OFFICE       (-219.5, -209)   (50.5, 24)      (1010, 480)      Door
+DOOR_CORRIDOR_R_SPARE        (-213.5, -209)   (56.5, 24)      (1130, 480)      Door
+DOOR_LIVING_PATIO            (-220.7, -223.3) (49.3, 9.7)     (986, 194)       Door
+DOOR_CORRIDOR_R_PATIO_STRIP  (-210, -212)     (60, 21)        (1200, 420)      Door
+DOOR_LIVING_DOG_PATIO        (-232.5, -199)   (37.5, 34)      (750, 680)       Door
+DOOR_MASTER_DOG_PATIO        (-261.5, -199)   (8.5, 34)       (170, 680)       Door
+DOOR_YARD_SHED               (-195, -224)     (75, 9)         (1500, 180)      Door
+DOOR_RUN_COOP                (-194, -198)     (76, 35)        (1520, 700)      Door
+GATE_YARD_CHICKEN_RUN        (-198, -212)     (72, 21)        (1440, 420)      Gate
+GATE_DOG_CHICKEN_TOP         (-220.7, -228.75)(49.3, 4.25)    (986, 85)        Gate
+GATE_DOG_CHICKEN_BOTTOM      (-220.7, -193.75)(49.3, 39.25)   (986, 785)       Gate
+
+LIVING_ROOM (center)         (-231, -212)     (39, 21)        (780, 420)       Room
+KITCHEN (center)             (-245, -219)     (25, 14)        (500, 280)       Room
+READING (center)             (-252, -219)     (18, 14)        (360, 280)       Room
+CORRIDOR_LEFT (center)       (-248, -210)     (22, 23)        (440, 460)       Room
+CORRIDOR_RIGHT (center)      (-215, -211)     (55, 22)        (1100, 440)      Room
+MASTER_BEDROOM (center)      (-260, -208)     (10, 25)        (200, 500)       Room
+ENSUITE (center)             (-260, -221)     (10, 12)        (200, 240)       Room
+BABYS_ROOM (center)          (-248, -203)     (22, 30)        (440, 600)       Room
+HOUSEMATE_ROOM (center)      (-215, -216)     (55, 17)        (1100, 340)      Room
+HOME_OFFICE (center)         (-218, -204)     (52, 29)        (1040, 580)      Room
+SPARE_ROOM (center)          (-213, -204)     (57, 29)        (1140, 580)      Room
+PATIO_MAIN (center)          (-213, -222)     (57, 11)        (1140, 220)      Room
+PATIO_STRIP (center)         (-208, -209)     (62, 24)        (1240, 480)      Room
+DOG_PATIO (center)           (-242, -196)     (28, 37)        (560, 740)       Room
+DOG_YARD (center)            (-245, -211)     (25, 22)        (500, 440)       Room
+CHICKEN_YARD (center)        (-204, -211)     (66, 22)        (1320, 440)      Room
+SHED (center)                (-195, -228)     (75, 5)         (1500, 100)      Room
+CHICKEN_RUN (center)         (-193, -202)     (77, 31)        (1540, 620)      Room
+CHICKEN_COOP (center)        (-193, -199)     (77, 34)        (1540, 680)      Room
+
+
+WAYPOINT CONNECTIONS (what each waypoint connects to):
+─────────────────────────────────────────────────────────────────────────────
+DOOR_ENSUITE_MASTER       → MASTER_BEDROOM, ENSUITE
+DOOR_MASTER_CORRIDOR_L    → MASTER_BEDROOM, CORRIDOR_LEFT
+DOOR_READING_CORRIDOR_L   → READING, CORRIDOR_LEFT
+DOOR_KITCHEN_CORRIDOR_L   → KITCHEN, CORRIDOR_LEFT
+DOOR_BABY_CORRIDOR_L      → BABYS_ROOM, CORRIDOR_LEFT
+DOOR_CORRIDOR_L_LIVING    → CORRIDOR_LEFT, LIVING_ROOM
+DOOR_KITCHEN_LIVING       → KITCHEN, LIVING_ROOM
+DOOR_LIVING_CORRIDOR_R    → LIVING_ROOM, CORRIDOR_RIGHT
+DOOR_CORRIDOR_R_HOUSEMATE → CORRIDOR_RIGHT, HOUSEMATE_ROOM
+DOOR_CORRIDOR_R_OFFICE    → CORRIDOR_RIGHT, HOME_OFFICE
+DOOR_CORRIDOR_R_SPARE     → CORRIDOR_RIGHT, SPARE_ROOM
+DOOR_LIVING_PATIO         → LIVING_ROOM, PATIO_MAIN
+DOOR_CORRIDOR_R_PATIO_STR → CORRIDOR_RIGHT, PATIO_STRIP
+DOOR_LIVING_DOG_PATIO     → LIVING_ROOM, DOG_PATIO
+DOOR_MASTER_DOG_PATIO     → MASTER_BEDROOM, DOG_PATIO
+DOOR_YARD_SHED            → DOG_YARD, SHED
+DOOR_RUN_COOP             → CHICKEN_RUN, CHICKEN_COOP
+GATE_YARD_CHICKEN_RUN     → DOG_YARD, CHICKEN_RUN
+GATE_DOG_CHICKEN_TOP      → DOG_YARD, CHICKEN_YARD
+GATE_DOG_CHICKEN_BOTTOM   → DOG_YARD, CHICKEN_YARD
+
+LIVING_ROOM (center)      → All living room doors (5 connections)
+KITCHEN (center)          → DOOR_KITCHEN_LIVING, DOOR_KITCHEN_CORRIDOR_L
+READING (center)          → DOOR_READING_CORRIDOR_L
+CORRIDOR_LEFT (center)    → All left corridor doors (5 connections)
+CORRIDOR_RIGHT (center)   → All right corridor doors (5 connections)
+MASTER_BEDROOM (center)   → DOOR_MASTER_CORRIDOR_L, DOOR_ENSUITE_MASTER, DOOR_MASTER_DOG_PATIO
+ENSUITE (center)          → DOOR_ENSUITE_MASTER
+BABYS_ROOM (center)       → DOOR_BABY_CORRIDOR_L
+HOUSEMATE_ROOM (center)   → DOOR_CORRIDOR_R_HOUSEMATE
+HOME_OFFICE (center)      → DOOR_CORRIDOR_R_OFFICE
+SPARE_ROOM (center)       → DOOR_CORRIDOR_R_SPARE
+PATIO_MAIN (center)       → DOOR_LIVING_PATIO
+PATIO_STRIP (center)      → DOOR_CORRIDOR_R_PATIO_STRIP
+DOG_PATIO (center)        → DOOR_LIVING_DOG_PATIO, DOOR_MASTER_DOG_PATIO
+DOG_YARD (center)         → DOOR_YARD_SHED, GATE_YARD_CHICKEN_RUN, both dog/chicken gates
+CHICKEN_YARD (center)     → GATE_DOG_CHICKEN_TOP, GATE_DOG_CHICKEN_BOTTOM
+SHED (center)             → DOOR_YARD_SHED
+CHICKEN_RUN (center)      → GATE_YARD_CHICKEN_RUN, DOOR_RUN_COOP
+CHICKEN_COOP (center)     → DOOR_RUN_COOP
+
+
+═══════════════════════════════════════════════════════════════════════════════
+                              USAGE TIPS
+═══════════════════════════════════════════════════════════════════════════════
+
+1. When discussing coordinates, specify which system you're using:
+   "Move it to RAW (-240, -220)" or "Move it to PIXEL (600, 260)"
+
+2. The code uses RAW coordinates internally (negative values)
+
+3. For small adjustments, think in tiles:
+   - 1 tile = 20 pixels
+   - "+5 tiles right" = add +5 to RAW x-coord
+   - "-3 tiles up" = subtract 3 from RAW y-coord (more negative)
+
+4. Remember: More negative Y = HIGHER on screen (towards top)
+            More negative X = FURTHER LEFT on screen
+
+5. Living room is the central hub - most paths go through it
+
+6. Dog Patio is at the bottom of the house (largest Y values)

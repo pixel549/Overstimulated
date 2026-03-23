@@ -1,0 +1,312 @@
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+}
+
+body {
+    background: #1a1a1a;
+    color: #fff;
+    font-family: 'Courier New', monospace;
+    overflow: hidden;
+}
+
+#game-container {
+    width: 100vw;
+    height: 100vh;
+    position: relative;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    overflow: hidden;
+}
+
+canvas {
+    display: block;
+    background: #000;
+    position: relative;
+    z-index: 1;
+    touch-action: none;
+}
+
+#touch-controls {
+    display: none;
+    position: absolute;
+    inset: 0;
+    z-index: 20;
+    pointer-events: none;
+    padding: 18px;
+    align-items: flex-end;
+    justify-content: space-between;
+}
+
+.touch-pad,
+.touch-actions {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    pointer-events: auto;
+}
+
+.touch-row {
+    display: flex;
+    gap: 10px;
+}
+
+.touch-btn {
+    border: 2px solid rgba(255, 255, 255, 0.35);
+    background: rgba(0, 0, 0, 0.55);
+    color: #fff;
+    font-family: 'Courier New', monospace;
+    font-size: 12px;
+    font-weight: bold;
+    border-radius: 14px;
+    min-width: 68px;
+    min-height: 56px;
+    padding: 10px 14px;
+    backdrop-filter: blur(6px);
+}
+
+.touch-btn.primary {
+    background: rgba(255, 204, 0, 0.75);
+    color: #111;
+    border-color: rgba(255, 204, 0, 0.9);
+}
+
+.touch-btn:active,
+.touch-btn.active {
+    transform: scale(0.96);
+    background: rgba(77, 184, 255, 0.75);
+    border-color: rgba(77, 184, 255, 0.95);
+}
+
+@media (hover: none), (pointer: coarse), (max-width: 900px) {
+    #touch-controls {
+        display: flex;
+    }
+}
+
+#ui-overlay {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    pointer-events: none;
+    z-index: 10;
+}
+
+/* Meter */
+#meter-container {
+    position: fixed;
+    top: 10px;
+    right: 10px;
+    width: 250px;
+    background: rgba(0, 0, 0, 0.95);
+    border: 3px solid #ff6b6b;
+    padding: 10px;
+    font-size: 12px;
+    z-index: 9999;
+    pointer-events: auto;
+}
+
+#meter-label {
+    text-align: center;
+    color: #ff6b6b;
+    margin-bottom: 5px;
+    font-weight: bold;
+}
+
+#meter-bar {
+    width: 100%;
+    height: 20px;
+    background: #222;
+    border: 1px solid #555;
+    position: relative;
+    overflow: hidden;
+}
+
+#meter-fill {
+    height: 100%;
+    background: linear-gradient(to right, #ffcc00, #ff6b6b);
+    width: 0%;
+    transition: width 0.1s ease;
+}
+
+#meter-value {
+    text-align: center;
+    margin-top: 5px;
+    color: #ffcc00;
+}
+
+/* Tasks Panel */
+#tasks-panel {
+    position: fixed;
+    top: 120px;
+    right: 10px;
+    width: 280px;
+    background: rgba(0, 0, 0, 0.95);
+    border: 3px solid #4db8ff;
+    padding: 10px;
+    max-height: 300px;
+    overflow-y: auto;
+    z-index: 9999;
+    pointer-events: auto;
+}
+
+#tasks-title {
+    color: #4db8ff;
+    font-weight: bold;
+    margin-bottom: 8px;
+    border-bottom: 1px solid #4db8ff;
+    padding-bottom: 5px;
+    min-height: 20px;
+}
+
+/* Ensure at least the title is visible even if no tasks */
+#tasks-panel::before {
+    content: '';
+    display: block;
+    height: 1px;
+}
+
+.task-item {
+    background: rgba(77, 184, 255, 0.1);
+    border-left: 3px solid #4db8ff;
+    padding: 8px;
+    margin-bottom: 6px;
+    font-size: 11px;
+    line-height: 1.4;
+}
+
+.task-type {
+    color: #ffcc00;
+    font-weight: bold;
+}
+
+.task-progress {
+    color: #aaa;
+    font-size: 10px;
+}
+
+/* Day Info */
+#day-info {
+    position: fixed;
+    top: 10px;
+    left: 10px;
+    background: rgba(0, 0, 0, 0.95);
+    border: 3px solid #4db8ff;
+    padding: 8px 12px;
+    font-size: 14px;
+    z-index: 9999;
+    pointer-events: auto;
+}
+
+#day-label {
+    color: #4db8ff;
+    margin-right: 20px;
+    font-weight: bold;
+}
+
+#time-label {
+    color: #ffcc00;
+}
+
+/* Controls Hint */
+#controls-hint {
+    position: absolute;
+    bottom: 10px;
+    left: 10px;
+    background: rgba(0, 0, 0, 0.7);
+    border: 1px solid #666;
+    padding: 8px 12px;
+    font-size: 11px;
+    color: #aaa;
+}
+
+#controls-hint p {
+    margin: 0;
+}
+
+/* Sprint Bar */
+#sprint-bar {
+    position: absolute;
+    bottom: 10px;
+    right: 10px;
+    width: 180px;
+    background: rgba(0, 0, 0, 0.7);
+    border: 2px solid #66ff66;
+    padding: 8px;
+}
+
+#sprint-label {
+    color: #66ff66;
+    font-size: 10px;
+    font-weight: bold;
+    margin-bottom: 3px;
+}
+
+#sprint-meter-bg {
+    width: 100%;
+    height: 12px;
+    background: #222;
+    border: 1px solid #333;
+    overflow: hidden;
+}
+
+#sprint-meter-fill {
+    height: 100%;
+    background: linear-gradient(to right, #66ff66, #66cc66);
+    width: 100%;
+    transition: width 0.05s linear;
+}
+
+/* Modal */
+#modal {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: rgba(0, 0, 0, 0.9);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 1000;
+}
+
+#modal-content {
+    background: #1a1a1a;
+    border: 2px solid #ff6b6b;
+    padding: 30px;
+    max-width: 500px;
+    text-align: center;
+}
+
+#modal-title {
+    color: #ff6b6b;
+    margin-bottom: 15px;
+    font-size: 24px;
+}
+
+#modal-text {
+    color: #ccc;
+    margin-bottom: 20px;
+    line-height: 1.8;
+    white-space: pre-line;
+}
+
+#modal-button {
+    background: #ff6b6b;
+    border: none;
+    color: #000;
+    padding: 10px 30px;
+    font-size: 14px;
+    font-weight: bold;
+    cursor: pointer;
+    pointer-events: auto;
+}
+
+#modal-button:hover {
+    background: #ff8888;
+}

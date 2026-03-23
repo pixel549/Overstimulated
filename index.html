@@ -1,0 +1,42 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Overstimulated - Personal Space Invaders</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div id="game-container">
+        <canvas id="gameCanvas"></canvas>
+
+        <div id="touch-controls">
+            <div class="touch-pad">
+                <button class="touch-btn touch-dir" data-touch="up">UP</button>
+                <div class="touch-row">
+                    <button class="touch-btn touch-dir" data-touch="left">LEFT</button>
+                    <button class="touch-btn touch-dir" data-touch="down">DOWN</button>
+                    <button class="touch-btn touch-dir" data-touch="right">RIGHT</button>
+                </div>
+            </div>
+
+            <div class="touch-actions">
+                <button class="touch-btn touch-action" data-touch="sprinting">RUN</button>
+                <button class="touch-btn touch-action" data-touch="interact">TALK</button>
+                <button class="touch-btn touch-action" data-touch="bark">BARK</button>
+                <button class="touch-btn touch-action primary" data-touch="action">ACT</button>
+            </div>
+        </div>
+
+        <div id="modal" style="display: none;">
+            <div id="modal-content">
+                <h2 id="modal-title"></h2>
+                <p id="modal-text"></p>
+                <button id="modal-button">CONTINUE</button>
+            </div>
+        </div>
+    </div>
+
+    <script src="game.js"></script>
+</body>
+</html>

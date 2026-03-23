@@ -1,0 +1,9 @@
+__pycache__/
+*.pyc
+server.log
+.claude/
+*.lnk
+*.zip
+game.js.backup
+game - Copy.js
+house_map.xlsx

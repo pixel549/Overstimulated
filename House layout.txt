@@ -1,0 +1,196 @@
+// House layout (updated)
+// Notes:
+// - Patios are OPEN to yards: no patio↔yard walls, no patio↔yard doors.
+// - Dog patio only connects to Living room + Master bedroom.
+// - Unique keys only (no duplicate object keys like PATIO/CORRIDOR).
+
+const ROOMS = {
+  // Outdoors
+  DOG_YARD: { x: -269, y: -233, w: 48, h: 43, name: 'Dog yard', color: '#24cc46' },
+  CHICKEN_YARD: { x: -221, y: -233, w: 34, h: 43, name: 'Chicken yard', color: '#24cc46' },
+
+  SHED: { x: -202, y: -232, w: 14, h: 8, name: 'Shed', color: '#b0b0b0' },
+  CHICKEN_RUN: { x: -198, y: -222, w: 9, h: 25, name: 'Chicken run', color: '#b0b0b0' },
+  CHICKEN_COOP: { x: -195, y: -209, w: 4, h: 5, name: 'Chicken coop', color: '#369b4a' },
+
+  // Indoors
+  LIVING_ROOM: { x: -241, y: -226, w: 20, h: 27, name: 'Living room', color: '#363d9b' },
+  KITCHEN: { x: -249, y: -226, w: 8, h: 15, name: 'Kitchen', color: '#ffffff' },
+  READING__DOG_ROOM: { x: -256, y: -226, w: 7, h: 15, name: 'Reading / dog room', color: '#fe7c7c' },
+  BABYS_ROOM: { x: -256, y: -209, w: 15, h: 10, name: "Baby's room", color: '#fe7cf9' },
+
+  MASTER_BEDROOM: { x: -264, y: -217, w: 8, h: 18, name: 'Master Bedroom', color: '#aea8ff' },
+  ENSUITE: { x: -264, y: -226, w: 8, h: 9, name: 'Ensuite', color: '#6a5ffc' },
+
+  // Right-side rooms
+  HOUSEMATE_ROOM: { x: -221, y: -219, w: 11, h: 7, name: "Housemate's room", color: '#78ff75' },
+  HOME_OFFICE: { x: -221, y: -210, w: 5, h: 11, name: 'Home office', color: '#7ceffe' },
+  SPARE_ROOM: { x: -216, y: -210, w: 6, h: 11, name: 'Spare room', color: '#a86161' },
+
+  // Corridors (split so keys are unique)
+  CORRIDOR_RIGHT: { x: -221, y: -212, w: 11, h: 2, name: 'Corridor (right)', color: '#f7ca50' },
+  CORRIDOR_LEFT: { x: -256, y: -211, w: 15, h: 2, name: 'Corridor (left)', color: '#f7ca50' },
+
+  // Patios (split so keys are unique)
+  PATIO_MAIN: { x: -221, y: -226, w: 15, h: 7, name: 'Patio', color: '#fff475' },
+  PATIO_STRIP: { x: -210, y: -219, w: 4, h: 20, name: 'Patio strip', color: '#fff475' },
+
+  // Dog patio (restricted entrances)
+  DOG_PATIO: { x: -264, y: -199, w: 43, h: 5, name: 'Dog Patio', color: '#eef58e' },
+};
+
+const WALLS = [
+  // (Your original file had a few zero-size walls; keeping them in case your renderer expects them.)
+  { x: 0, y: 0, w: 0, h: 0.3 },
+  { x: 0, y: -0.3, w: 0, h: 0.3 },
+  { x: 0, y: 0, w: 0.3, h: 0 },
+  { x: -0.3, y: 0, w: 0.3, h: 0 },
+
+  // DOG_YARD perimeter
+  { x: -269, y: -233, w: 48, h: 0.3 },
+  { x: -269, y: -190.3, w: 48, h: 0.3 },
+  { x: -269, y: -233, w: 0.3, h: 43 },
+  { x: -221.3, y: -233, w: 0.3, h: 43 },
+
+  // CHICKEN_YARD perimeter (right edge only; left edge shared with DOG_YARD)
+  { x: -221, y: -233, w: 34, h: 0.3 },
+  { x: -221, y: -190.3, w: 34, h: 0.3 },
+  { x: -187.3, y: -233, w: 0.3, h: 43 },
+
+  // SHED
+  { x: -202, y: -232, w: 14, h: 0.3 },
+  { x: -202, y: -224.3, w: 14, h: 0.3 },
+  { x: -202, y: -232, w: 0.3, h: 8 },
+  { x: -188.3, y: -232, w: 0.3, h: 8 },
+
+  // CHICKEN_RUN
+  { x: -198, y: -222, w: 9, h: 0.3 },
+  { x: -198, y: -197.3, w: 9, h: 0.3 },
+  { x: -198, y: -222, w: 0.3, h: 25 },
+  { x: -189.3, y: -222, w: 0.3, h: 25 },
+
+  // CHICKEN_COOP
+  { x: -195, y: -209, w: 4, h: 0.3 },
+  { x: -195, y: -204.3, w: 4, h: 0.3 },
+  { x: -195, y: -209, w: 0.3, h: 5 },
+  { x: -191.3, y: -209, w: 0.3, h: 5 },
+
+  // LIVING_ROOM
+  { x: -241, y: -226, w: 20, h: 0.3 },
+  { x: -241, y: -199.3, w: 20, h: 0.3 },
+  { x: -241, y: -226, w: 0.3, h: 27 },
+  { x: -221.3, y: -226, w: 0.3, h: 27 },
+
+  // PATIO_MAIN
+  // IMPORTANT: patio open to yards → remove patio edges that would wall it off from outdoors.
+  // Keeping ONLY the edge that separates patio from interior (north edge to housemate room area).
+  // Removed from your original: { x:-221, y:-226, w:15, h:0.3 } and { x:-206.3, y:-226, w:0.3, h:7 }
+  { x: -221, y: -219.3, w: 15, h: 0.3 },
+
+  // PATIO_STRIP
+  // Open to yards on its "south" and "east" edges → remove those wall segments.
+  // Keeping the edges that touch interior rooms/corridor.
+  { x: -210, y: -219, w: 4, h: 0.3 },     // top edge (touches house rooms)
+  { x: -210, y: -219, w: 0.3, h: 20 },     // left edge (touches house rooms)
+  // Removed from your original: { x:-210, y:-199.3, w:4, h:0.3 } and { x:-206.3, y:-219, w:0.3, h:20 }
+
+  // HOUSEMATE_ROOM
+  { x: -221, y: -219, w: 11, h: 0.3 },
+  { x: -221, y: -212.3, w: 11, h: 0.3 },
+  { x: -221, y: -219, w: 0.3, h: 7 },
+  { x: -210.3, y: -219, w: 0.3, h: 7 },
+
+  // CORRIDOR_RIGHT
+  { x: -221, y: -212, w: 11, h: 0.3 },
+  { x: -221, y: -210.3, w: 11, h: 0.3 },
+  { x: -221, y: -212, w: 0.3, h: 2 },
+  { x: -210.3, y: -212, w: 0.3, h: 2 },
+
+  // CORRIDOR_LEFT
+  { x: -256, y: -211, w: 15, h: 0.3 },
+  { x: -256, y: -209.3, w: 15, h: 0.3 },
+  { x: -256, y: -211, w: 0.3, h: 2 },
+  { x: -241.3, y: -211, w: 0.3, h: 2 },
+
+  // KITCHEN
+  { x: -249, y: -226, w: 8, h: 0.3 },
+  { x: -249, y: -211.3, w: 8, h: 0.3 },
+  { x: -249, y: -226, w: 0.3, h: 15 },
+  { x: -241.3, y: -226, w: 0.3, h: 15 },
+
+  // READING__DOG_ROOM
+  { x: -256, y: -226, w: 7, h: 0.3 },
+  { x: -256, y: -211.3, w: 7, h: 0.3 },
+  { x: -256, y: -226, w: 0.3, h: 15 },
+  { x: -249.3, y: -226, w: 0.3, h: 15 },
+
+  // BABYS_ROOM
+  { x: -256, y: -209, w: 15, h: 0.3 },
+  { x: -256, y: -199.3, w: 15, h: 0.3 },
+  { x: -256, y: -209, w: 0.3, h: 10 },
+  { x: -241.3, y: -209, w: 0.3, h: 10 },
+
+  // HOME_OFFICE
+  { x: -221, y: -210, w: 5, h: 0.3 },
+  { x: -221, y: -199.3, w: 5, h: 0.3 },
+  { x: -221, y: -210, w: 0.3, h: 11 },
+  { x: -216.3, y: -210, w: 0.3, h: 11 },
+
+  // SPARE_ROOM
+  { x: -216, y: -210, w: 6, h: 0.3 },
+  { x: -216, y: -199.3, w: 6, h: 0.3 },
+  { x: -216, y: -210, w: 0.3, h: 11 },
+  { x: -210.3, y: -210, w: 0.3, h: 11 },
+
+  // MASTER_BEDROOM
+  { x: -264, y: -217, w: 8, h: 0.3 },
+  { x: -264, y: -199.3, w: 8, h: 0.3 },
+  { x: -264, y: -217, w: 0.3, h: 18 },
+  { x: -256.3, y: -217, w: 0.3, h: 18 },
+
+  // ENSUITE
+  { x: -264, y: -226, w: 8, h: 0.3 },
+  { x: -264, y: -217.3, w: 8, h: 0.3 },
+  { x: -264, y: -226, w: 0.3, h: 9 },
+  { x: -256.3, y: -226, w: 0.3, h: 9 },
+
+  // DOG_PATIO (kept enclosed; entrances handled via DOORS)
+  { x: -264, y: -199, w: 43, h: 0.3 },
+  { x: -264, y: -194.3, w: 43, h: 0.3 },
+  { x: -264, y: -199, w: 0.3, h: 5 },
+  { x: -221.3, y: -199, w: 0.3, h: 5 },
+];
+
+const DOORS = [
+  // Internal doors
+  { x: -261.5, y: -217, w: 1.5, h: 0.3, name: 'Ensuite → Master Bedroom', open: true, connectsTo: ['ENSUITE', 'MASTER_BEDROOM'] },
+
+  { x: -256.3, y: -210.6, w: 0.3, h: 1.2, name: 'Master Bedroom → Corridor (left)', open: true, connectsTo: ['MASTER_BEDROOM', 'CORRIDOR_LEFT'] },
+
+  { x: -253.8, y: -211.3, w: 1.6, h: 0.3, name: 'Reading room → Corridor (left)', open: true, connectsTo: ['READING__DOG_ROOM', 'CORRIDOR_LEFT'] },
+  { x: -246.2, y: -211.3, w: 1.6, h: 0.3, name: 'Kitchen → Corridor (left)', open: true, connectsTo: ['KITCHEN', 'CORRIDOR_LEFT'] },
+  { x: -249.5, y: -209.3, w: 1.6, h: 0.3, name: "Baby's room → Corridor (left)", open: true, connectsTo: ['BABYS_ROOM', 'CORRIDOR_LEFT'] },
+
+  { x: -241.3, y: -210.6, w: 0.3, h: 1.2, name: 'Corridor (left) → Living room', open: true, connectsTo: ['CORRIDOR_LEFT', 'LIVING_ROOM'] },
+  { x: -241.3, y: -219.0, w: 0.3, h: 1.2, name: 'Kitchen → Living room', open: true, connectsTo: ['KITCHEN', 'LIVING_ROOM'] },
+
+  { x: -221.0, y: -211.6, w: 0.3, h: 1.2, name: 'Living room → Corridor (right)', open: true, connectsTo: ['LIVING_ROOM', 'CORRIDOR_RIGHT'] },
+  { x: -218.0, y: -212.3, w: 1.6, h: 0.3, name: "Corridor (right) → Housemate's room", open: true, connectsTo: ['CORRIDOR_RIGHT', 'HOUSEMATE_ROOM'] },
+  { x: -220.0, y: -210.3, w: 1.4, h: 0.3, name: 'Corridor (right) → Home office', open: true, connectsTo: ['CORRIDOR_RIGHT', 'HOME_OFFICE'] },
+  { x: -214.0, y: -210.3, w: 1.4, h: 0.3, name: 'Corridor (right) → Spare room', open: true, connectsTo: ['CORRIDOR_RIGHT', 'SPARE_ROOM'] },
+
+  // Exterior doors (patios open to yards, but house-to-patio doors remain)
+  { x: -221.0, y: -223.5, w: 0.3, h: 1.6, name: 'Living room → Patio', open: false, connectsTo: ['LIVING_ROOM', 'PATIO_MAIN'] },
+
+  // Optional: housemate outside access (if you want him to skulk outside)
+  { x: -210.3, y: -216.5, w: 0.3, h: 1.2, name: "Housemate's room → Patio strip", open: false, connectsTo: ['HOUSEMATE_ROOM', 'PATIO_STRIP'] },
+
+  // Dog patio entrances (ONLY these two)
+  { x: -233.0, y: -199.3, w: 1.6, h: 0.3, name: 'Living room → Dog patio', open: false, connectsTo: ['LIVING_ROOM', 'DOG_PATIO'] },
+  { x: -262.0, y: -199.3, w: 1.6, h: 0.3, name: 'Master Bedroom → Dog patio', open: false, connectsTo: ['MASTER_BEDROOM', 'DOG_PATIO'] },
+
+  // Shed / run / coop (so tasks are “real”)
+  { x: -196.0, y: -224.3, w: 1.2, h: 0.3, name: 'Chicken yard → Shed', open: false, connectsTo: ['CHICKEN_YARD', 'SHED'] },
+  { x: -195.5, y: -222.0, w: 1.2, h: 0.3, name: 'Chicken yard → Chicken run', open: false, connectsTo: ['CHICKEN_YARD', 'CHICKEN_RUN'] },
+  { x: -194.5, y: -204.3, w: 1.0, h: 0.3, name: 'Chicken run → Coop', open: false, connectsTo: ['CHICKEN_RUN', 'CHICKEN_COOP'] },
+];
