@@ -4342,6 +4342,12 @@ function getWaypointCandidatesForPosition(x, y, bodySize = DAD_HITBOX_SIZE, maxC
     return selected;
 }
 
+function prefersRoomAnchorStart(roomKey) {
+    return roomKey === 'CORRIDOR_LEFT'
+        || roomKey === 'CORRIDOR_RIGHT'
+        || roomKey === 'PATIO_STRIP';
+}
+
 function findBestWaypointRoute(startX, startY, targetX, targetY, options = {}) {
     const bodySize = options.bodySize || DAD_HITBOX_SIZE;
     const routeContext = options.routeContext || null;
@@ -4349,12 +4355,19 @@ function findBestWaypointRoute(startX, startY, targetX, targetY, options = {}) {
     const targetRoomKey = getRoomAt(targetX, targetY);
     const rawStartCandidates = getWaypointCandidatesForPosition(startX, startY, bodySize, 6, targetX, targetY);
     const rawEndCandidates = getWaypointCandidatesForPosition(targetX, targetY, bodySize, 4, startX, startY);
-    const startCandidates = rawStartCandidates.some(candidate => candidate.inSameRoom)
+    let startCandidates = rawStartCandidates.some(candidate => candidate.inSameRoom)
         ? rawStartCandidates.filter(candidate => candidate.inSameRoom)
         : rawStartCandidates;
     const endCandidates = rawEndCandidates.some(candidate => candidate.inSameRoom)
         ? rawEndCandidates.filter(candidate => candidate.inSameRoom)
         : rawEndCandidates;
+
+    if (prefersRoomAnchorStart(startRoomKey)) {
+        const roomCenterCandidate = startCandidates.find(candidate => candidate.waypoint === startRoomKey);
+        if (roomCenterCandidate) {
+            startCandidates = [roomCenterCandidate];
+        }
+    }
 
     let bestRoute = null;
 
