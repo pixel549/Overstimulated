@@ -5980,88 +5980,396 @@ function drawFloorplan() {
     });
 }
 
-// Draw only the primary interactable that Dad will act on with E
-function drawAOECircles() {
-    const dadX = gameState.dad.x + gameState.dad.width / 2;
-    const dadY = gameState.dad.y + gameState.dad.height / 2;
-    const interactionRadius = 50 * gameState.cameraScale;
+function formatObjectLabel(key) {
+    return String(key || '')
+        .toLowerCase()
+        .split('_')
+        .filter(Boolean)
+        .map(part => part.charAt(0).toUpperCase() + part.slice(1))
+        .join(' ');
+}
 
-    // Determine what would be interacted with if E is pressed (priority order):
-    // 1. Task at nearby location
-    // 2. Relax spot (couch, bed)
-    // 3. Toilet
-    // 4. Coffee machine
+function wrapTextToWidth(text, maxWidth, font, maxLines = 3) {
+    const words = String(text || '').split(/\s+/).filter(Boolean);
+    if (!words.length) {
+        return { lines: [], width: 0 };
+    }
 
-    // Check for nearby task
-    const nearbyTask = findNearbyTask();
+    ctx.save();
+    ctx.font = font;
+
+    const lines = [];
+    let current = '';
+
+    for (let i = 0; i < words.length; i++) {
+        const candidate = current ? `${current} ${words[i]}` : words[i];
+        if (!current || ctx.measureText(candidate).width <= maxWidth) {
+            current = candidate;
+            continue;
+        }
+
+        lines.push(current);
+        current = words[i];
+
+        if (lines.length === maxLines - 1) {
+            const remainder = [current].concat(words.slice(i + 1)).join(' ');
+            lines.push(fitHudText(remainder, maxWidth, font));
+            current = '';
+            break;
+        }
+    }
+
+    if (current) {
+        lines.push(current);
+    }
+
+    let width = 0;
+    for (const line of lines) {
+        width = Math.max(width, ctx.measureText(line).width);
+    }
+
+    ctx.restore();
+    return { lines, width };
+}
+
+function getWorldMarkerTheme(type) {
+    switch (type) {
+        case 'hold':
+            return {
+                fill: 'rgba(255, 209, 111, 0.92)',
+                stroke: '#ffe4aa',
+                halo: 'rgba(255, 209, 111, 0.2)',
+                cardFill: 'rgba(56, 39, 12, 0.9)',
+                cardStroke: 'rgba(255, 209, 111, 0.42)',
+                text: '#fff4d4'
+            };
+        case 'coverage':
+        case 'dishes':
+            return {
+                fill: 'rgba(134, 212, 255, 0.94)',
+                stroke: '#e2f6ff',
+                halo: 'rgba(134, 212, 255, 0.22)',
+                cardFill: 'rgba(9, 28, 42, 0.92)',
+                cardStroke: 'rgba(134, 212, 255, 0.42)',
+                text: '#e8f8ff'
+            };
+        case 'relax':
+            return {
+                fill: 'rgba(255, 142, 190, 0.92)',
+                stroke: '#ffe0ef',
+                halo: 'rgba(255, 142, 190, 0.2)',
+                cardFill: 'rgba(47, 17, 32, 0.9)',
+                cardStroke: 'rgba(255, 142, 190, 0.42)',
+                text: '#ffe9f4'
+            };
+        case 'tool':
+            return {
+                fill: 'rgba(147, 239, 156, 0.92)',
+                stroke: '#e4ffe8',
+                halo: 'rgba(147, 239, 156, 0.22)',
+                cardFill: 'rgba(17, 42, 22, 0.92)',
+                cardStroke: 'rgba(147, 239, 156, 0.4)',
+                text: '#e9ffed'
+            };
+        case 'deposit':
+            return {
+                fill: 'rgba(255, 141, 132, 0.92)',
+                stroke: '#ffe3df',
+                halo: 'rgba(255, 141, 132, 0.22)',
+                cardFill: 'rgba(46, 21, 18, 0.92)',
+                cardStroke: 'rgba(255, 141, 132, 0.42)',
+                text: '#ffedea'
+            };
+        default:
+            return {
+                fill: 'rgba(255, 176, 79, 0.92)',
+                stroke: '#fff0cf',
+                halo: 'rgba(255, 176, 79, 0.2)',
+                cardFill: 'rgba(52, 32, 12, 0.92)',
+                cardStroke: 'rgba(255, 176, 79, 0.4)',
+                text: '#fff0d3'
+            };
+    }
+}
+
+function getCharacterReadabilityTheme(character) {
+    switch (character) {
+        case 'dad':
+            return { name: 'Dad', fill: 'rgba(40, 60, 16, 0.92)', stroke: 'rgba(255, 204, 0, 0.48)', text: '#fff7db' };
+        case 'wife':
+            return { name: 'Wife', fill: 'rgba(56, 18, 34, 0.92)', stroke: 'rgba(255, 107, 157, 0.48)', text: '#ffe8f0' };
+        case 'jake':
+            return { name: 'Jake', fill: 'rgba(54, 24, 24, 0.92)', stroke: 'rgba(255, 153, 153, 0.44)', text: '#fff0f0' };
+        case 'baby':
+            return { name: 'Baby', fill: 'rgba(64, 34, 18, 0.92)', stroke: 'rgba(255, 204, 153, 0.48)', text: '#fff1e2' };
+        case 'momo':
+            return { name: 'Momo', fill: 'rgba(52, 34, 22, 0.92)', stroke: 'rgba(204, 153, 102, 0.44)', text: '#fff0e4' };
+        case 'piper':
+            return { name: 'Piper', fill: 'rgba(28, 30, 38, 0.92)', stroke: 'rgba(169, 184, 199, 0.42)', text: '#eff5fb' };
+        case 'munty':
+            return { name: 'Munty', fill: 'rgba(58, 12, 18, 0.94)', stroke: 'rgba(255, 109, 118, 0.55)', text: '#ffe8ea' };
+        case 'aylin':
+            return { name: 'Aylin', fill: 'rgba(50, 36, 10, 0.94)', stroke: 'rgba(255, 209, 111, 0.44)', text: '#fff1cf' };
+        default:
+            return { name: formatObjectLabel(character), fill: 'rgba(20, 28, 38, 0.92)', stroke: 'rgba(134, 212, 255, 0.42)', text: '#edf6ff' };
+    }
+}
+
+function drawWorldNameplate(centerX, topY, title, options = {}) {
+    const font = options.font || '700 9px Consolas, "Lucida Console", monospace';
+    const paddingX = options.paddingX || 8;
+    const height = options.height || 18;
+    const fill = options.fill || 'rgba(12, 18, 26, 0.9)';
+    const stroke = options.stroke || 'rgba(255, 255, 255, 0.16)';
+    const textColor = options.textColor || '#ffffff';
+
+    ctx.save();
+    ctx.font = font;
+    const width = Math.ceil(ctx.measureText(title).width) + paddingX * 2;
+    ctx.restore();
+
+    const x = centerX - width / 2;
+    fillRoundedRect(x, topY, width, height, height / 2, fill);
+    strokeRoundedRect(x, topY, width, height, height / 2, stroke, 1);
+
+    ctx.save();
+    ctx.font = font;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillStyle = textColor;
+    ctx.fillText(title, centerX, topY + height / 2 + 0.5);
+    ctx.restore();
+
+    return { x, y: topY, width, height };
+}
+
+function getPrimaryInteractionState(nearbyTask = findNearbyTask(), nearbyDoor = findNearbyDoor()) {
+    const dadCenterX = gameState.dad.x + gameState.dad.width / 2;
+    const dadCenterY = gameState.dad.y + gameState.dad.height / 2;
+    const relaxSpot = checkRelaxSpot(gameState.dad.x, gameState.dad.y);
+    const toiletSpot = checkToiletHiding(gameState.dad.x, gameState.dad.y);
+    const mowerSpot = checkMower(gameState.dad.x, gameState.dad.y);
+    const nearCoffee = checkCoffeeMachine(gameState.dad.x, gameState.dad.y);
+
+    if (gameState.isRelaxing) {
+        return {
+            kind: 'relax_exit',
+            action: 'PRESS E',
+            title: 'Stand up',
+            detail: 'Leave the relax spot.',
+            x: dadCenterX,
+            y: dadCenterY,
+            radius: 52,
+            theme: getWorldMarkerTheme('relax')
+        };
+    }
+
+    if (gameState.isHidingInToilet) {
+        return {
+            kind: 'toilet_exit',
+            action: 'PRESS E',
+            title: 'Leave hideout',
+            detail: 'Step back into the chaos.',
+            x: dadCenterX,
+            y: dadCenterY,
+            radius: 52,
+            theme: getWorldMarkerTheme('deposit')
+        };
+    }
+
     if (nearbyTask) {
         const poi = getPOIByName(nearbyTask.location);
-        if (poi) {
-            const screen = worldToScreen(poi.x * TILE_SIZE, poi.y * TILE_SIZE);
-            ctx.fillStyle = 'rgba(100, 255, 100, 0.2)';
-            ctx.strokeStyle = 'rgba(100, 255, 100, 0.8)';
-            ctx.lineWidth = 3;
-            ctx.beginPath();
-            ctx.arc(screen.x, screen.y, interactionRadius, 0, Math.PI * 2);
-            ctx.fill();
-            ctx.stroke();
-        }
-        return; // Don't check other interactables if task is nearby
+        return {
+            kind: 'task',
+            action: nearbyTask.type === 'hold' ? 'HOLD E' : 'PRESS E',
+            title: nearbyTask.name,
+            detail: nearbyTask.type === 'fetch'
+                ? nearbyTask.location
+                : `${nearbyTask.location} | ${Math.floor(nearbyTask.progress)}/${nearbyTask.maxProgress}`,
+            x: poi ? poi.x * TILE_SIZE : dadCenterX,
+            y: poi ? poi.y * TILE_SIZE : dadCenterY,
+            radius: getTaskInteractionThreshold(nearbyTask),
+            progress: nearbyTask.maxProgress > 0 ? nearbyTask.progress / nearbyTask.maxProgress : 0,
+            theme: getWorldMarkerTheme(nearbyTask.type)
+        };
     }
 
-    // Check for relax spot
-    const relaxSpot = checkRelaxSpot(gameState.dad.x, gameState.dad.y);
-    if (relaxSpot) {
+    if (relaxSpot && !gameState.isRelaxing) {
         const objCenterX = (relaxSpot.obj.x + OFFSET_X + relaxSpot.obj.w / 2) * TILE_SIZE;
         const objCenterY = (relaxSpot.obj.y + OFFSET_Y + relaxSpot.obj.h / 2) * TILE_SIZE;
-        const screen = worldToScreen(objCenterX, objCenterY);
-        ctx.fillStyle = 'rgba(100, 150, 255, 0.2)';
-        ctx.strokeStyle = 'rgba(100, 150, 255, 0.8)';
-        ctx.lineWidth = 3;
-        ctx.beginPath();
-        ctx.arc(screen.x, screen.y, interactionRadius, 0, Math.PI * 2);
-        ctx.fill();
-        ctx.stroke();
-        return; // Don't check other interactables if relax spot is nearby
+        return {
+            kind: 'relax_enter',
+            action: 'PRESS E',
+            title: 'Relax',
+            detail: formatObjectLabel(relaxSpot.key),
+            x: objCenterX,
+            y: objCenterY,
+            radius: 62,
+            theme: getWorldMarkerTheme('relax')
+        };
     }
 
-    // Check for toilet
-    const toiletCheck = checkToiletHiding(gameState.dad.x, gameState.dad.y);
-    if (toiletCheck) {
+    if (nearCoffee && !gameState.coffeeBuff) {
+        const coffee = WORLD_OBJECTS.COFFEE_MACHINE;
+        const coffeeCenterX = (coffee.x + OFFSET_X + coffee.w / 2) * TILE_SIZE;
+        const coffeeCenterY = (coffee.y + OFFSET_Y + coffee.h / 2) * TILE_SIZE;
+        return {
+            kind: 'coffee',
+            action: 'HOLD E',
+            title: 'Brew coffee',
+            detail: gameState.coffeeProgress > 0
+                ? `${Math.max(0, gameState.coffeeBrewTime - gameState.coffeeProgress).toFixed(1)}s to ready`
+                : '60s stress resistance',
+            x: coffeeCenterX,
+            y: coffeeCenterY,
+            radius: 64,
+            progress: gameState.coffeeProgress / gameState.coffeeBrewTime,
+            theme: getWorldMarkerTheme('hold')
+        };
+    }
+
+    if (toiletSpot && toiletSpot.canHide) {
         const toilet = WORLD_OBJECTS.TOILET;
         const toiletCenterX = (toilet.x + OFFSET_X + toilet.w / 2) * TILE_SIZE;
         const toiletCenterY = (toilet.y + OFFSET_Y + toilet.h / 2) * TILE_SIZE;
-        const screen = worldToScreen(toiletCenterX, toiletCenterY);
-        ctx.fillStyle = 'rgba(200, 100, 255, 0.2)';
-        ctx.strokeStyle = 'rgba(200, 100, 255, 0.8)';
-        ctx.lineWidth = 3;
-        ctx.beginPath();
-        ctx.arc(screen.x, screen.y, interactionRadius, 0, Math.PI * 2);
-        ctx.fill();
-        ctx.stroke();
-        return;
+        return {
+            kind: 'toilet_enter',
+            action: 'PRESS E',
+            title: 'Hide in toilet',
+            detail: toiletSpot.doorClosed ? 'Door sealed: max calm.' : 'Close the door for more calm.',
+            x: toiletCenterX,
+            y: toiletCenterY,
+            radius: 56,
+            theme: getWorldMarkerTheme('deposit')
+        };
     }
 
-    // Check for coffee machine
-    const coffee = WORLD_OBJECTS.COFFEE_MACHINE;
-    if (coffee) {
-        const coffeeCenterX = (coffee.x + OFFSET_X + coffee.w / 2) * TILE_SIZE;
-        const coffeeCenterY = (coffee.y + OFFSET_Y + coffee.h / 2) * TILE_SIZE;
-        const dadCenterX = gameState.dad.x + gameState.dad.width / 2;
-        const dadCenterY = gameState.dad.y + gameState.dad.height / 2;
-        const dist = Math.hypot(coffeeCenterX - dadCenterX, coffeeCenterY - dadCenterY);
-        if (dist < 150) {
-            const screen = worldToScreen(coffeeCenterX, coffeeCenterY);
-            ctx.fillStyle = 'rgba(200, 150, 100, 0.2)';
-            ctx.strokeStyle = 'rgba(200, 150, 100, 0.8)';
-            ctx.lineWidth = 3;
-            ctx.beginPath();
-            ctx.arc(screen.x, screen.y, interactionRadius, 0, Math.PI * 2);
-            ctx.fill();
-            ctx.stroke();
-            return;
-        }
+    if (nearbyDoor) {
+        return {
+            kind: 'door',
+            action: 'PRESS E',
+            title: nearbyDoor.open ? 'Close door' : 'Open door',
+            detail: nearbyDoor.name,
+            x: nearbyDoor.x * TILE_SIZE + (nearbyDoor.w * TILE_SIZE) / 2,
+            y: nearbyDoor.y * TILE_SIZE + (nearbyDoor.h * TILE_SIZE) / 2,
+            radius: 54,
+            theme: getWorldMarkerTheme('tool')
+        };
     }
+
+    if (mowerSpot) {
+        return {
+            kind: 'mower_pickup',
+            action: 'PRESS E',
+            title: 'Pick up mower',
+            detail: 'Cuts grass while moving.',
+            x: mowerSpot.x + mowerSpot.width / 2,
+            y: mowerSpot.y + mowerSpot.height / 2,
+            radius: 56,
+            theme: getWorldMarkerTheme('tool')
+        };
+    }
+
+    if (gameState.dad.carrying === 'MOWER' && gameState.mower) {
+        return {
+            kind: 'mower_drop',
+            action: 'PRESS E',
+            title: 'Drop mower',
+            detail: 'Place it beside Dad.',
+            x: dadCenterX,
+            y: dadCenterY,
+            radius: 52,
+            theme: getWorldMarkerTheme('tool')
+        };
+    }
+
+    return null;
+}
+
+function drawInteractionPrompt(interaction, anchorX, anchorY) {
+    if (!interaction) return;
+
+    const eyebrowFont = '700 9px Consolas, "Lucida Console", monospace';
+    const titleFont = '700 11px "Trebuchet MS", "Segoe UI", sans-serif';
+    const detailFont = '600 10px "Trebuchet MS", "Segoe UI", sans-serif';
+    const detail = wrapTextToWidth(interaction.detail, 160, detailFont, 2);
+
+    ctx.save();
+    ctx.font = eyebrowFont;
+    const eyebrowWidth = ctx.measureText(interaction.action).width;
+    ctx.font = titleFont;
+    const titleWidth = ctx.measureText(interaction.title).width;
+    ctx.restore();
+
+    const contentWidth = Math.max(eyebrowWidth, titleWidth, detail.width);
+    const width = Math.max(120, Math.ceil(contentWidth) + 28);
+    const progressHeight = interaction.progress !== undefined ? 10 : 0;
+    const height = 34 + detail.lines.length * 12 + progressHeight;
+    const x = anchorX - width / 2;
+    const y = anchorY - height - 42;
+
+    fillRoundedRect(x, y, width, height, 12, interaction.theme.cardFill);
+    strokeRoundedRect(x, y, width, height, 12, interaction.theme.cardStroke, 1.5);
+    drawWorldNameplate(anchorX, y - 11, interaction.action, {
+        fill: interaction.theme.cardFill,
+        stroke: interaction.theme.cardStroke,
+        textColor: interaction.theme.text,
+        height: 18,
+        font: eyebrowFont
+    });
+
+    ctx.save();
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'top';
+    ctx.fillStyle = '#ffffff';
+    ctx.font = titleFont;
+    ctx.fillText(interaction.title, anchorX, y + 10);
+
+    ctx.fillStyle = 'rgba(231, 239, 247, 0.84)';
+    ctx.font = detailFont;
+    detail.lines.forEach((line, index) => {
+        ctx.fillText(line, anchorX, y + 25 + index * 12);
+    });
+    ctx.restore();
+
+    if (interaction.progress !== undefined) {
+        drawHudBar(x + 12, y + height - 12, width - 24, 6, interaction.progress, interaction.theme.fill, interaction.theme.stroke, 'rgba(255, 255, 255, 0.06)');
+    }
+
+    ctx.save();
+    ctx.fillStyle = interaction.theme.cardFill;
+    ctx.strokeStyle = interaction.theme.cardStroke;
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    ctx.moveTo(anchorX - 8, y + height - 2);
+    ctx.lineTo(anchorX, y + height + 10);
+    ctx.lineTo(anchorX + 8, y + height - 2);
+    ctx.closePath();
+    ctx.fill();
+    ctx.stroke();
+    ctx.restore();
+}
+
+// Draw only the primary interactable that Dad will act on with E
+function drawAOECircles() {
+    const nearbyTask = findNearbyTask();
+    const nearbyDoor = nearbyTask ? null : findNearbyDoor();
+    const interaction = getPrimaryInteractionState(nearbyTask, nearbyDoor);
+    if (!interaction) return;
+
+    const pulse = 0.88 + 0.08 * Math.sin(gameState.time * 5.5);
+    const screen = worldToScreen(interaction.x, interaction.y);
+    const interactionRadius = Math.min(interaction.radius || 50, 76) * gameState.cameraScale * pulse;
+
+    ctx.save();
+    ctx.fillStyle = interaction.theme.halo;
+    ctx.strokeStyle = interaction.theme.stroke;
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.arc(screen.x, screen.y, interactionRadius, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.stroke();
+    ctx.restore();
 }
 
 // Draw sprinkler area of effect (legacy)
@@ -6227,6 +6535,11 @@ function render() {
     // Find nearby interactables once at the start
     const nearbyTask = findNearbyTask();
     const nearbyDoor = findNearbyDoor();
+    const dadCenterX = gameState.dad.x + gameState.dad.width / 2;
+    const dadCenterY = gameState.dad.y + gameState.dad.height / 2;
+    const dadRoomKey = getRoomAt(dadCenterX, dadCenterY);
+    const interactionState = getPrimaryInteractionState(nearbyTask, nearbyTask ? null : nearbyDoor);
+    const speakingCharacters = new Set(activeDialogues.map(dialogue => dialogue.character));
 
     // Camera transform
     ctx.save();
@@ -6369,68 +6682,92 @@ function render() {
     // Draw world objects (furniture, etc)
     drawWorldObjects();
 
-    // Highlight incomplete task POIs
-    for (let task of gameState.tasks) {
-        let poi = null;
-        for (let p of Object.values(POIS)) {
-            if (p.name === task.location) {
-                poi = p;
-                break;
-            }
-        }
-
-        if (poi) {
-            const poiX = poi.x * TILE_SIZE + TILE_SIZE / 2;
-            const poiY = poi.y * TILE_SIZE + TILE_SIZE / 2;
-
-            // Draw task indicators
-            if (task.progress < task.maxProgress) {
-                ctx.fillStyle = 'rgba(255, 150, 100, 0.3)';
-                ctx.beginPath();
-                ctx.arc(poiX, poiY, 25, 0, Math.PI * 2);
-                ctx.fill();
-            }
+    const activeTasksByLocation = new Map();
+    for (const task of gameState.tasks) {
+        if (!activeTasksByLocation.has(task.location)) {
+            activeTasksByLocation.set(task.location, task);
         }
     }
 
-    // Draw POIs with distinctive visuals and labels
-    const poiColors = {
-        'relax': '#ff69b4',      // Pink for relax areas
-        'dishes': '#4dd0ff',     // Cyan for kitchen sink
-        'fetch': '#ffaa00',      // Orange for fetch items
-        'deposit': '#ff6b6b',    // Red for deposit/cleanup
-        'coverage': '#ffff00',   // Yellow for coverage tasks
-        'tool': '#90ee90',       // Light green for tools
-        'hold': '#dda0dd'        // Plum for hold tasks
-    };
-
-    for (let poi of Object.values(POIS)) {
+    for (const poi of Object.values(POIS)) {
         const poiX = poi.x * TILE_SIZE + TILE_SIZE / 2;
         const poiY = poi.y * TILE_SIZE + TILE_SIZE / 2;
-        const color = poiColors[poi.type] || '#ffaa00';
+        const activeTask = activeTasksByLocation.get(poi.name) || null;
+        const isNearbyPoi = !!(nearbyTask && poi.name === nearbyTask.location);
+        const distanceToDad = Math.hypot(dadCenterX - poiX, dadCenterY - poiY);
+        const shouldLabel = (!isNearbyPoi && distanceToDad < 132) || (!!activeTask && poi.room === dadRoomKey && !isNearbyPoi);
+        const theme = getWorldMarkerTheme(activeTask ? activeTask.type : poi.type);
+        const pulse = 0.7 + 0.3 * Math.sin(gameState.time * 4 + poiX * 0.02 + poiY * 0.02);
+        const radius = isNearbyPoi ? 14 : activeTask ? 11 + pulse * 1.2 : distanceToDad < 132 ? 8 : 6;
 
-        // Check if this POI matches the nearby task
-        const isNearby = nearbyTask && poi.name === nearbyTask.location;
+        if (activeTask) {
+            ctx.strokeStyle = theme.stroke;
+            ctx.lineWidth = 2;
+            ctx.beginPath();
+            ctx.moveTo(poiX, poiY - radius - 10);
+            ctx.lineTo(poiX, poiY - 34 - pulse * 4);
+            ctx.stroke();
 
-        // Draw circle (larger if nearby)
-        ctx.fillStyle = color;
+            ctx.fillStyle = theme.halo;
+            ctx.beginPath();
+            ctx.arc(poiX, poiY, radius + 10 + pulse * 4, 0, Math.PI * 2);
+            ctx.fill();
+        }
+
+        ctx.fillStyle = theme.fill;
         ctx.beginPath();
-        ctx.arc(poiX, poiY, isNearby ? 16 : 14, 0, Math.PI * 2);
+        ctx.arc(poiX, poiY, radius, 0, Math.PI * 2);
         ctx.fill();
 
-        // Draw border (white and thicker if nearby)
-        ctx.strokeStyle = isNearby ? '#fff' : '#000';
-        ctx.lineWidth = isNearby ? 3 : 2;
+        ctx.strokeStyle = isNearbyPoi ? '#ffffff' : theme.stroke;
+        ctx.lineWidth = isNearbyPoi ? 2.5 : 1.6;
         ctx.beginPath();
-        ctx.arc(poiX, poiY, isNearby ? 16 : 14, 0, Math.PI * 2);
+        ctx.arc(poiX, poiY, radius, 0, Math.PI * 2);
         ctx.stroke();
 
-        // Draw label below
-        ctx.fillStyle = isNearby ? '#fff' : color;
-        ctx.font = isNearby ? 'bold 9px monospace' : '8px monospace';
-        ctx.textAlign = 'center';
-        ctx.textBaseline = 'top';
-        ctx.fillText(poi.name, poiX, poiY + 18);
+        if (activeTask && activeTask.type !== 'fetch' && activeTask.maxProgress > 0) {
+            ctx.strokeStyle = '#ffffff';
+            ctx.lineWidth = 2;
+            ctx.beginPath();
+            ctx.arc(
+                poiX,
+                poiY,
+                radius + 4,
+                -Math.PI / 2,
+                -Math.PI / 2 + Math.PI * 2 * Math.min(1, activeTask.progress / activeTask.maxProgress)
+            );
+            ctx.stroke();
+        }
+
+        if (shouldLabel) {
+            const title = activeTask ? activeTask.name : poi.name;
+            const subtitle = activeTask
+                ? (activeTask.type === 'fetch'
+                    ? 'Ready to clear'
+                    : `${getTaskTypeTheme(activeTask.type).label} ${Math.floor(activeTask.progress)}/${activeTask.maxProgress}`)
+                : (poi.type === 'relax'
+                    ? 'Calm spot'
+                    : poi.type === 'tool'
+                        ? 'Utility'
+                        : null);
+            const labelTop = poiY - (activeTask ? 46 : 28);
+            const label = drawWorldNameplate(poiX, labelTop, title, {
+                fill: theme.cardFill,
+                stroke: theme.cardStroke,
+                textColor: theme.text,
+                height: 18
+            });
+
+            if (subtitle) {
+                drawWorldNameplate(poiX, label.y + label.height + 3, subtitle, {
+                    fill: 'rgba(9, 15, 22, 0.88)',
+                    stroke: 'rgba(255, 255, 255, 0.1)',
+                    textColor: '#d7e3ec',
+                    height: 16,
+                    font: '700 8px Consolas, "Lucida Console", monospace'
+                });
+            }
+        }
     }
 
     // Draw world entities (poop, toys, mess)
@@ -6549,15 +6886,15 @@ function render() {
 
     // Draw NPCs with distinguishable characters
     const npcList = [
-        { state: gameState.npcStates.wife, char: 'W', name: 'Wife', color: '#ff6b9d' },
-        { state: gameState.npcStates.housemate, char: 'J', name: 'Jake', color: '#ff9999' },
-        { state: gameState.npcStates.baby, char: 'B', name: 'Baby', color: '#ffcc99' },
-        { state: gameState.npcStates.brownDog, char: 'M', name: 'Momo', color: '#cc9966' },
-        { state: gameState.npcStates.blackDog, char: 'P', name: 'Piper', color: '#666666' }
+        { id: 'wife', state: gameState.npcStates.wife, char: 'W', name: 'Wife', color: '#ff6b9d' },
+        { id: 'jake', state: gameState.npcStates.housemate, char: 'J', name: 'Jake', color: '#ff9999' },
+        { id: 'baby', state: gameState.npcStates.baby, char: 'B', name: 'Baby', color: '#ffcc99' },
+        { id: 'momo', state: gameState.npcStates.brownDog, char: 'M', name: 'Momo', color: '#cc9966' },
+        { id: 'piper', state: gameState.npcStates.blackDog, char: 'P', name: 'Piper', color: '#666666' }
     ];
 
     if (gameState.npcStates.munty) {
-        npcList.push({ state: gameState.npcStates.munty, char: 'm', name: 'Munty', color: '#000000', pulse: true });
+        npcList.push({ id: 'munty', state: gameState.npcStates.munty, char: 'm', name: 'Munty', color: '#000000', pulse: true });
     }
 
     for (let npc of npcList) {
@@ -6566,7 +6903,6 @@ function render() {
 
         // Munty vibrates and pulses red
         let offsetX = 0, offsetY = 0;
-        let alpha = 1.0;
         if (npc.pulse && npc.state.vibrate !== undefined) {
             offsetX = Math.sin(npc.state.vibrate) * 2;
             offsetY = Math.cos(npc.state.vibrate * 1.3) * 2;
@@ -6622,12 +6958,15 @@ function render() {
             ctx.fillText(npc.char, x + offsetX, y + offsetY);
         }
 
-        // Draw name below sprite
-        ctx.fillStyle = '#fff';
-        ctx.font = 'bold 10px monospace';
-        ctx.textAlign = 'center';
-        ctx.textBaseline = 'top';
-        ctx.fillText(npc.name, x, y + 25);
+        if (!speakingCharacters.has(npc.id)) {
+            const nameplateTheme = getCharacterReadabilityTheme(npc.id);
+            drawWorldNameplate(x + offsetX, y + 24 + offsetY, npc.name, {
+                fill: nameplateTheme.fill,
+                stroke: nameplateTheme.stroke,
+                textColor: nameplateTheme.text,
+                height: 18
+            });
+        }
     }
 
     // Draw dad (larger and centered)
@@ -6719,54 +7058,36 @@ function render() {
         const color = carryingColors[gameState.dad.carrying] || '#ff9999';
         const label = carryingLabels[gameState.dad.carrying] || '📦';
 
+        const displayLabelMap = {
+            'BABY': 'BABY',
+            'BEER': 'BEER',
+            'COFFEE': 'COFFEE',
+            'MOWER': 'MOWER'
+        };
+        const displayLabel = displayLabelMap[gameState.dad.carrying] || 'ITEM';
+
         // Draw carrying aura
         ctx.fillStyle = `${color}66`;
         ctx.beginPath();
         ctx.arc(dadPixelX, dadPixelY, 35, 0, Math.PI * 2);
         ctx.fill();
 
-        // Draw carrying label above player
-        ctx.fillStyle = '#fff';
-        ctx.strokeStyle = '#000';
-        ctx.lineWidth = 2;
-        ctx.font = 'bold 16px monospace';
-        ctx.strokeText(label, dadPixelX, dadPixelY - 35);
-        ctx.fillText(label, dadPixelX, dadPixelY - 35);
+        drawWorldNameplate(dadPixelX, dadPixelY - 48, displayLabel, {
+            fill: 'rgba(20, 18, 14, 0.94)',
+            stroke: `${color}aa`,
+            textColor: '#fff8ef',
+            height: 18
+        });
     }
 
-    // Draw Dad's name below
-    ctx.fillStyle = '#fff';
-    ctx.font = 'bold 10px monospace';
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'top';
-    ctx.fillText('Dad', dadPixelX, dadPixelY + 18);
-
-    // Draw interaction radius and task hint
-    if (nearbyTask || nearbyDoor) {
-        ctx.strokeStyle = 'rgba(255, 200, 0, 0.7)';
-        ctx.lineWidth = 2;
-        ctx.setLineDash([5, 5]);
-        ctx.beginPath();
-        ctx.arc(dadPixelX, dadPixelY, 120, 0, Math.PI * 2);
-        ctx.stroke();
-        ctx.setLineDash([]);
-
-        // Show hint
-        if (nearbyDoor) {
-            ctx.fillStyle = 'rgba(100, 200, 100, 0.8)';
-            ctx.fillRect(dadPixelX - 80, dadPixelY - 40, 160, 20);
-            ctx.fillStyle = '#000';
-            ctx.font = '10px monospace';
-            ctx.textAlign = 'center';
-            ctx.fillText('DOOR: ' + nearbyDoor.name + ' (Press E)', dadPixelX, dadPixelY - 28);
-        } else if (nearbyTask) {
-            ctx.fillStyle = 'rgba(255, 200, 0, 0.8)';
-            ctx.fillRect(dadPixelX - 60, dadPixelY - 40, 120, 20);
-            ctx.fillStyle = '#000';
-            ctx.font = '10px monospace';
-            ctx.textAlign = 'center';
-            ctx.fillText('NEARBY: ' + nearbyTask.name, dadPixelX, dadPixelY - 28);
-        }
+    if (!speakingCharacters.has('dad')) {
+        const dadNameplate = getCharacterReadabilityTheme('dad');
+        drawWorldNameplate(dadPixelX, dadPixelY + 24, 'Dad', {
+            fill: dadNameplate.fill,
+            stroke: dadNameplate.stroke,
+            textColor: dadNameplate.text,
+            height: 18
+        });
     }
 
     // Draw audio rings (visual feedback for sounds)
@@ -6786,6 +7107,11 @@ function render() {
 
     // Restore camera transform (back to screen space for UI)
     ctx.restore();
+
+    if (interactionState) {
+        const promptAnchor = worldToScreen(dadPixelX, dadPixelY);
+        drawInteractionPrompt(interactionState, promptAnchor.x, promptAnchor.y);
+    }
 
     // Draw HUD (screen space - stays locked to viewport)
     drawHUD();
@@ -7872,7 +8198,6 @@ function updateDialogues(dt) {
 // Draw dialogues
 function drawDialogues() {
     for (let d of activeDialogues) {
-        // Get current character position or use fallback
         let charX = d.x;
         let charY = d.y;
 
@@ -7882,58 +8207,58 @@ function drawDialogues() {
             charY = obj.y + (obj.height ? obj.height / 2 : 0);
         }
 
-        // Convert world coordinates to screen coordinates
         const screen = worldToScreen(charX, charY);
         const screenX = screen.x + d.bobOffset;
-        const screenY = screen.y - 80 * gameState.cameraScale + (1 - d.timeLeft / (d.duration || 3)) * 20;
+        const screenY = screen.y - 82 * gameState.cameraScale + (1 - d.timeLeft / (d.duration || 3)) * 18;
         const alpha = Math.max(0, d.timeLeft / (d.duration || 3));
+        const theme = getCharacterReadabilityTheme(d.character);
+        const speakerFont = '700 9px Consolas, "Lucida Console", monospace';
+        const textFont = '700 11px "Trebuchet MS", "Segoe UI", sans-serif';
+        const wrapped = wrapTextToWidth(d.text, 190, textFont, 3);
 
+        ctx.save();
+        ctx.font = speakerFont;
+        const speakerWidth = ctx.measureText(theme.name.toUpperCase()).width;
+        ctx.restore();
+
+        const width = Math.max(Math.ceil(wrapped.width), Math.ceil(speakerWidth)) + 28;
+        const height = 24 + wrapped.lines.length * 13;
+        const x = Math.max(8, Math.min(GAME_WIDTH - width - 8, screenX - width / 2));
+        const y = Math.max(8, screenY - height / 2);
+        const pointerX = Math.max(x + 16, Math.min(x + width - 16, screenX));
+
+        ctx.save();
         ctx.globalAlpha = alpha;
-        ctx.fillStyle = 'rgba(0, 0, 0, 0.8)';
-        ctx.strokeStyle = 'white';
-        ctx.lineWidth = 2;
+        fillRoundedRect(x, y, width, height, 12, 'rgba(8, 13, 19, 0.92)');
+        strokeRoundedRect(x, y, width, height, 12, theme.stroke, 1.5);
 
-        // Draw dialogue bubble (rounded rectangle)
-        const textMetrics = ctx.measureText(d.text);
-        const width = textMetrics.width + 20;
-        const height = 30;
-        const x = screenX - width / 2;
-        const y = screenY - height / 2;
-        const radius = 6;
+        drawWorldNameplate(x + width / 2, y - 11, theme.name.toUpperCase(), {
+            fill: theme.fill,
+            stroke: theme.stroke,
+            textColor: theme.text,
+            height: 18,
+            font: speakerFont
+        });
 
-        // Draw rounded rectangle manually
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'top';
+        ctx.fillStyle = '#f7fbff';
+        ctx.font = textFont;
+        wrapped.lines.forEach((line, index) => {
+            ctx.fillText(line, x + width / 2, y + 11 + index * 13);
+        });
+
+        ctx.fillStyle = 'rgba(8, 13, 19, 0.92)';
+        ctx.strokeStyle = theme.stroke;
+        ctx.lineWidth = 1.5;
         ctx.beginPath();
-        ctx.moveTo(x + radius, y);
-        ctx.lineTo(x + width - radius, y);
-        ctx.quadraticCurveTo(x + width, y, x + width, y + radius);
-        ctx.lineTo(x + width, y + height - radius);
-        ctx.quadraticCurveTo(x + width, y + height, x + width - radius, y + height);
-        ctx.lineTo(x + radius, y + height);
-        ctx.quadraticCurveTo(x, y + height, x, y + height - radius);
-        ctx.lineTo(x, y + radius);
-        ctx.quadraticCurveTo(x, y, x + radius, y);
+        ctx.moveTo(pointerX - 8, y + height - 2);
+        ctx.lineTo(pointerX, y + height + 10);
+        ctx.lineTo(pointerX + 8, y + height - 2);
         ctx.closePath();
         ctx.fill();
         ctx.stroke();
-
-        // Draw pointer triangle
-        ctx.beginPath();
-        ctx.moveTo(screenX - 5, screenY + height / 2);
-        ctx.lineTo(screenX, screenY + height / 2 + 10);
-        ctx.lineTo(screenX + 5, screenY + height / 2);
-        ctx.closePath();
-        ctx.fill();
-
-        // Draw text with strong black border for readability
-        ctx.font = 'bold 12px monospace';
-        ctx.textAlign = 'center';
-        ctx.lineWidth = 3;
-        ctx.strokeStyle = '#000';
-        ctx.strokeText(d.text, screenX, screenY + 5);
-        ctx.fillStyle = '#fff';
-        ctx.fillText(d.text, screenX, screenY + 5);
-        ctx.textAlign = 'left';
-        ctx.globalAlpha = 1;
+        ctx.restore();
     }
 }
 
