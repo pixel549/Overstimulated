@@ -239,9 +239,17 @@ class DirectPlayerBot:
         if name == "GET BEER":
             base += 65
         if name.startswith("Clean poop"):
-            base += 45 + task["maxProgress"] * 2
+            base += 36 + task["maxProgress"] * 1.5
         if name.startswith("Collect toys"):
-            base += 35 + task["maxProgress"]
+            base += 24 + task["maxProgress"]
+        if name == "Straighten coffee table":
+            base += 16
+        if name == "Straighten armchair":
+            base += 15
+        if name == "Clear kitchen island":
+            base += 14
+        if name == "Put groceries away":
+            base += 12
         if task["location"] == "Baby":
             base -= 15
         if snapshot["overstimulation"] > 75 and task["type"] == "hold":
@@ -360,18 +368,19 @@ class DirectPlayerBot:
             ):
                 return coffee
 
-        living = snapshot["pois"]["livingRoom"]
-        return Objective("idle", "Stand by in living room", living["x"], living["y"])
+        idle = snapshot["pois"].get("idle") or snapshot["pois"]["livingRoom"]
+        idle_name = idle.get("name", "living room")
+        return Objective("idle", f"Stand by in {idle_name}", idle["x"], idle["y"])
 
     def make_static_objective(self, snapshot: dict[str, Any], kind: str, label: str) -> Objective | None:
         if kind == "toilet":
             poi = snapshot["pois"].get("toilet")
         elif kind == "relax":
-            poi = snapshot["pois"].get("couch") or snapshot["pois"].get("bed")
+            poi = snapshot["pois"].get("relax") or snapshot["pois"].get("couch") or snapshot["pois"].get("bed")
         elif kind == "coffee":
             poi = snapshot["pois"].get("coffee")
         else:
-            poi = snapshot["pois"].get("livingRoom")
+            poi = snapshot["pois"].get("idle") or snapshot["pois"].get("livingRoom")
         if not poi:
             return None
         return Objective(kind, label, int(poi["x"]), int(poi["y"]))
@@ -408,13 +417,14 @@ class DirectPlayerBot:
         dy = target_y - dad["centerY"]
         distance = math.hypot(dx, dy)
         dead_zone = 6
-        align_threshold = 12
+        align_threshold = 10
+        cross_axis_threshold = 8
 
         move_x = dx
         move_y = dy
-        if door_orient == "v" and abs(dy) > align_threshold and abs(dx) > 18:
+        if door_orient == "v" and abs(dy) > align_threshold and abs(dx) > cross_axis_threshold:
             move_x = 0
-        elif door_orient == "h" and abs(dx) > align_threshold and abs(dy) > 18:
+        elif door_orient == "h" and abs(dx) > align_threshold and abs(dy) > cross_axis_threshold:
             move_y = 0
 
         self.set_controls(
@@ -437,13 +447,13 @@ class DirectPlayerBot:
         if objective.type == "task" and nearby_task and nearby_task["id"] == objective.task_id:
             distance = float(nearby_task.get("distance") or self.objective_distance(snapshot, objective))
             if objective.task_type == "fetch":
-                if distance > 64:
+                if distance > 72:
                     self.move_toward(snapshot, objective.target_x, objective.target_y)
                 else:
                     self.clear_controls()
                     self.tap("action")
             else:
-                task_hold_distance = 64 if objective.task_type == "hold" else 56
+                task_hold_distance = 68 if objective.task_type == "hold" else 60
                 if distance > task_hold_distance:
                     self.move_toward(snapshot, objective.target_x, objective.target_y, action_held=True)
                 else:

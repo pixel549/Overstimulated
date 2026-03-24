@@ -2,17 +2,20 @@
 const TILE_SIZE = 20;
 const GAME_WIDTH = 1000;
 const GAME_HEIGHT = 700;
-const DAD_HITBOX_SIZE = 22;
+const DAD_HITBOX_SIZE = 20;
 const MAX_OVERSTIMULATION = 100;
 // Baseline stress model constants
 // How quickly stress rises while moving (points per second)
 const BASE_MOVE_RATE = 0.8;
 // How quickly stress falls when standing still (points per second)
-const BASE_STILL_RATE = 0.8;
+const BASE_STILL_RATE = 0.9;
 // Additional calming when holding the action key while still (points per second)
-const BASE_EXTRA_CALM_RATE = 1.2;
+const BASE_EXTRA_CALM_RATE = 1.35;
 // How much incomplete tasks contribute to ambient stress (points per second when fully overloaded)
-const EXTRA_TASK_STRESS_RATE = 0.8;
+const EXTRA_TASK_STRESS_RATE = 0.65;
+const STARTING_EVENT_TICK_INTERVAL = 7.5;
+const MIN_EVENT_TICK_INTERVAL = 5.5;
+const DAY_EVENT_TICK_ACCELERATION = 0.75;
 const DAYS = 2;
 const SPRINKLER_SCHEDULE = [45, 165, 225];
 const BEER_TIME = 180;
@@ -454,6 +457,27 @@ const WORLD_OBJECTS = {
     SHED_SHELF: createWorldObject('SHED', 1.0, 1.0, 3.0, 1.4, { color: '#8d6e63', accent: '#d7ccc8', type: 'decor' })
 };
 
+function registerWorldObjectPOI(key, objectKey, type, name, room, offsetX = 0, offsetY = 0) {
+    const obj = WORLD_OBJECTS[objectKey];
+    if (!obj) return;
+
+    POIS[key] = {
+        x: obj.x + OFFSET_X + obj.w / 2 + offsetX,
+        y: obj.y + OFFSET_Y + obj.h / 2 + offsetY,
+        type,
+        name,
+        room
+    };
+}
+
+WORLD_OBJECTS.ARMCHAIR.type = 'relax';
+WORLD_OBJECTS.READING_CHAIR.type = 'relax';
+
+registerWorldObjectPOI('COFFEE_TABLE_TASK', 'COFFEE_TABLE', 'coverage', 'Coffee Table', 'LIVING_ROOM');
+registerWorldObjectPOI('ARMCHAIR_TASK', 'ARMCHAIR', 'coverage', 'Armchair', 'LIVING_ROOM');
+registerWorldObjectPOI('KITCHEN_ISLAND_TASK', 'KITCHEN_ISLAND', 'coverage', 'Kitchen Island', 'KITCHEN');
+registerWorldObjectPOI('FRIDGE_TASK', 'FRIDGE', 'fetch', 'Fridge', 'KITCHEN');
+
 // Sprite Cache - stores loaded character images
 let spriteCache = {
     dad: null,
@@ -530,7 +554,7 @@ let gameState = {
     nextTaskId: 0,
     selectedTaskId: null,
     lastEventTick: 0,
-    eventTickInterval: 6.66,
+    eventTickInterval: STARTING_EVENT_TICK_INTERVAL,
     stats: {
         tasksCompleted: 0,
         peakStimulation: 0,
@@ -664,7 +688,7 @@ function initGame() {
     gameState.nextTaskId = 0;
     gameState.selectedTaskId = null;
     gameState.lastEventTick = 0;
-    gameState.eventTickInterval = 6.66;
+    gameState.eventTickInterval = STARTING_EVENT_TICK_INTERVAL;
     gameState.stats = {
         tasksCompleted: 0,
         peakStimulation: 0,
@@ -761,18 +785,20 @@ function initGame() {
 }
 
 function addInitialTasks() {
-    // Dynamic tasks will be generated procedurally throughout the day
-    // Start with empty task list - tasks spawn via events
+    // Dynamic tasks are generated procedurally throughout the day.
+    // Start with a little believable clutter instead of a debug dump.
     gameState.tasks = [];
 
-    // ADD TEST ITEMS FOR PLAYTESTING
     if (gameState.day === 1) {
-        // Add test poop and toys to living room
         gameState.entities.push(
-            { type: 'poop', x: (ROOMS.LIVING_ROOM.x + 3) * TILE_SIZE, y: (ROOMS.LIVING_ROOM.y + 8) * TILE_SIZE },
-            { type: 'poop', x: (ROOMS.LIVING_ROOM.x + 10) * TILE_SIZE, y: (ROOMS.LIVING_ROOM.y + 12) * TILE_SIZE },
-            { type: 'toy', x: (ROOMS.LIVING_ROOM.x + 6) * TILE_SIZE, y: (ROOMS.LIVING_ROOM.y + 6) * TILE_SIZE },
-            { type: 'toy', x: (ROOMS.LIVING_ROOM.x + 12) * TILE_SIZE, y: (ROOMS.LIVING_ROOM.y + 18) * TILE_SIZE }
+            { type: 'poop', x: (ROOMS.PATIO_MAIN.x + 8) * TILE_SIZE, y: (ROOMS.PATIO_MAIN.y + 4) * TILE_SIZE },
+            { type: 'toy', x: (ROOMS.LIVING_ROOM.x + 7) * TILE_SIZE, y: (ROOMS.LIVING_ROOM.y + 11) * TILE_SIZE }
+        );
+    } else if (gameState.day >= 2) {
+        gameState.entities.push(
+            { type: 'poop', x: (ROOMS.PATIO_MAIN.x + 8) * TILE_SIZE, y: (ROOMS.PATIO_MAIN.y + 4) * TILE_SIZE },
+            { type: 'toy', x: (ROOMS.LIVING_ROOM.x + 7) * TILE_SIZE, y: (ROOMS.LIVING_ROOM.y + 11) * TILE_SIZE },
+            { type: 'toy', x: (ROOMS.BABYS_ROOM.x + 10) * TILE_SIZE, y: (ROOMS.BABYS_ROOM.y + 7) * TILE_SIZE }
         );
     }
 }
@@ -834,6 +860,61 @@ function getWorldObjectCenter(key) {
     return {
         x: (obj.x + OFFSET_X + obj.w / 2) * TILE_SIZE,
         y: (obj.y + OFFSET_Y + obj.h / 2) * TILE_SIZE
+    };
+}
+
+function getRelaxTargetPoint(originX, originY) {
+    let bestTarget = null;
+    let bestDistance = Infinity;
+
+    for (const [key, obj] of Object.entries(WORLD_OBJECTS)) {
+        if (obj.type !== 'relax') continue;
+
+        const centerX = (obj.x + OFFSET_X + obj.w / 2) * TILE_SIZE;
+        const centerY = (obj.y + OFFSET_Y + obj.h / 2) * TILE_SIZE;
+        const distance = Math.hypot(centerX - originX, centerY - originY);
+        if (distance < bestDistance) {
+            bestDistance = distance;
+            bestTarget = {
+                key,
+                x: Math.round(centerX),
+                y: Math.round(centerY),
+                name: key === 'ARMCHAIR'
+                    ? 'Armchair'
+                    : key === 'READING_CHAIR'
+                        ? 'Reading chair'
+                        : key === 'BED'
+                            ? 'Bed'
+                            : 'Couch'
+            };
+        }
+    }
+
+    return bestTarget;
+}
+
+function getStandbyTarget(originX, originY) {
+    const roomKey = getRoomAt(originX, originY);
+    let waypointName = 'LIVING_ROOM';
+
+    if (roomKey === 'CORRIDOR_RIGHT' || roomKey === 'HOUSEMATE_ROOM' || roomKey === 'HOME_OFFICE' || roomKey === 'SPARE_ROOM') {
+        waypointName = 'CORRIDOR_RIGHT';
+    } else if (roomKey === 'PATIO_STRIP' || roomKey === 'CHICKEN_YARD') {
+        waypointName = 'PATIO_STRIP';
+    } else if (roomKey === 'DOG_PATIO' || roomKey === 'DOG_YARD' || roomKey === 'SHED' || roomKey === 'CHICKEN_RUN' || roomKey === 'CHICKEN_COOP') {
+        waypointName = 'DOG_PATIO';
+    } else if (roomKey === 'CORRIDOR_LEFT' || roomKey === 'MASTER_BEDROOM' || roomKey === 'ENSUITE' || roomKey === 'BABYS_ROOM' || roomKey === 'READING__DOG_ROOM') {
+        waypointName = 'CORRIDOR_LEFT';
+    } else if (roomKey === 'KITCHEN') {
+        waypointName = 'KITCHEN';
+    }
+
+    const waypoint = WAYPOINTS[waypointName] || WAYPOINTS.LIVING_ROOM;
+    return {
+        waypointName,
+        label: ROOMS[waypointName] ? ROOMS[waypointName].name : 'Living room',
+        x: Math.round(waypoint.pixelX),
+        y: Math.round(waypoint.pixelY)
     };
 }
 
@@ -1281,6 +1362,8 @@ function getDirectPlayerSnapshot() {
     const relaxSpot = checkRelaxSpot(gameState.dad.x, gameState.dad.y);
     const toiletSpot = checkToiletHiding(gameState.dad.x, gameState.dad.y);
     const modal = document.getElementById('modal');
+    const relaxTarget = getRelaxTargetPoint(dadCenterX, dadCenterY);
+    const standbyTarget = getStandbyTarget(dadCenterX, dadCenterY);
 
     return {
         ready: true,
@@ -1325,6 +1408,8 @@ function getDirectPlayerSnapshot() {
             livingRoom: { x: Math.round(WAYPOINTS.LIVING_ROOM.pixelX), y: Math.round(WAYPOINTS.LIVING_ROOM.pixelY) },
             couch: getWorldObjectCenter('COUCH'),
             bed: getWorldObjectCenter('BED'),
+            relax: relaxTarget ? { x: relaxTarget.x, y: relaxTarget.y, name: relaxTarget.name } : null,
+            idle: { x: standbyTarget.x, y: standbyTarget.y, name: standbyTarget.label },
             toilet: getWorldObjectCenter('TOILET'),
             coffee: getCoffeeInteractionPoint(),
             sprinkler: { x: Math.round(POIS.SPRINKLER.x * TILE_SIZE), y: Math.round(POIS.SPRINKLER.y * TILE_SIZE) }
@@ -1484,8 +1569,12 @@ function scoreTaskForPlaytest(task) {
     if (task.name === 'MOVE SPRINKLER') score += 90;
     if (task.name === 'ROUND UP CHICKENS') score += 80;
     if (task.name === 'GET BEER') score += 65;
-    if (task.name.startsWith('Clean poop')) score += 45 + task.maxProgress * 2;
-    if (task.name.startsWith('Collect toys')) score += 35 + task.maxProgress;
+    if (task.name.startsWith('Clean poop')) score += 36 + task.maxProgress * 1.5;
+    if (task.name.startsWith('Collect toys')) score += 24 + task.maxProgress;
+    if (task.name === 'Straighten coffee table') score += 16;
+    if (task.name === 'Straighten armchair') score += 15;
+    if (task.name === 'Clear kitchen island') score += 14;
+    if (task.name === 'Put groceries away') score += 12;
     if (task.location === 'Baby') score -= 15;
     if (gameState.overstimulation > 75 && task.type === 'hold') score -= 20;
     if (gameState.tasks.length > 4 && task.type === 'hold') score -= 25;
@@ -1656,14 +1745,15 @@ function setPlaytestMovementToward(targetX, targetY, targetDoor = null) {
     const dy = targetY - dadCenterY;
     const distance = Math.hypot(dx, dy);
     const deadZone = 6;
-    const alignThreshold = 12;
+    const alignThreshold = 10;
+    const crossAxisThreshold = 8;
 
     let moveX = dx;
     let moveY = dy;
     if (targetDoor) {
-        if (targetDoor.orient === 'v' && Math.abs(dy) > alignThreshold && Math.abs(dx) > 18) {
+        if (targetDoor.orient === 'v' && Math.abs(dy) > alignThreshold && Math.abs(dx) > crossAxisThreshold) {
             moveX = 0;
-        } else if (targetDoor.orient === 'h' && Math.abs(dx) > alignThreshold && Math.abs(dy) > 18) {
+        } else if (targetDoor.orient === 'h' && Math.abs(dx) > alignThreshold && Math.abs(dy) > crossAxisThreshold) {
             moveY = 0;
         }
     }
@@ -1771,9 +1861,9 @@ function getPlaytestObjective() {
     }
 
     if (gameState.overstimulation >= 62) {
-        const couch = getWorldObjectCenter('COUCH') || getWorldObjectCenter('BED');
-        if (couch) {
-            const relaxObjective = { type: 'relax', label: 'Take a breather', targetX: couch.x, targetY: couch.y };
+        const relaxTarget = getRelaxTargetPoint(dadCenterX, dadCenterY);
+        if (relaxTarget) {
+            const relaxObjective = { type: 'relax', label: 'Take a breather', targetX: relaxTarget.x, targetY: relaxTarget.y };
             if (!isPlaytestObjectiveBlocked(relaxObjective)) {
                 return relaxObjective;
             }
@@ -1790,11 +1880,12 @@ function getPlaytestObjective() {
         }
     }
 
+    const standbyTarget = getStandbyTarget(dadCenterX, dadCenterY);
     return {
         type: 'idle',
-        label: 'Stand by in living room',
-        targetX: WAYPOINTS.LIVING_ROOM.pixelX,
-        targetY: WAYPOINTS.LIVING_ROOM.pixelY
+        label: `Stand by in ${standbyTarget.label}`,
+        targetX: standbyTarget.x,
+        targetY: standbyTarget.y
     };
 }
 
@@ -2107,9 +2198,9 @@ function addTaskIfMissing(name, location, type, duration = 0, maxProgress = 1) {
 
 function getTaskInteractionThreshold(task) {
     if (!task) return 120;
-    if (task.type === 'hold') return 140;
-    if (task.type === 'coverage') return 128;
-    return 112;
+    if (task.type === 'hold') return 144;
+    if (task.type === 'coverage') return 136;
+    return 120;
 }
 
 function getTaskTargetPosition(task) {
@@ -3127,8 +3218,13 @@ function completeTask(taskId) {
 
         // Reward varies by task type
         let reward = 10;
-        if (task.type === 'hold') reward = 15;
-        if (task.type === 'coverage') reward = 8;
+        if (task.type === 'hold') {
+            reward = Math.min(18, 12 + (task.duration || task.maxProgress || 0) * 0.15);
+        } else if (task.type === 'coverage') {
+            reward = Math.min(14, 8 + (task.maxProgress || 1) * 0.8);
+        } else if (task.name === 'MOVE SPRINKLER' || task.name === 'ROUND UP CHICKENS' || task.name === 'GET BEER') {
+            reward = 13;
+        }
 
         gameState.overstimulation = Math.max(0, gameState.overstimulation - reward);
 
@@ -3172,10 +3268,12 @@ function completeTask(taskId) {
 function generateRandomTasks() {
     // Base routine chores pool
     const routineChores = [
-        { type: 'hold', name: 'Cuddle dogs', location: 'Couch', duration: 20 },
-        { type: 'hold', name: 'Relax on couch', location: 'Couch', duration: 15 },
-        { type: 'coverage', name: 'Vacuum living room', location: 'Vacuum', duration: 6 },
-        { type: 'fetch', name: 'Refill dog water', location: 'Dog Bowls', duration: 0 },
+        { type: 'hold', name: 'Cuddle dogs', location: 'Couch', duration: 16, weight: 0.8, maxBacklog: 3, maxStress: 60 },
+        { type: 'hold', name: 'Relax on couch', location: 'Couch', duration: 12, weight: 0.55, maxBacklog: 2, maxStress: 48 },
+        { type: 'coverage', name: 'Vacuum living room', location: 'Vacuum', duration: 5, weight: 1.0, maxBacklog: 4 },
+        { type: 'fetch', name: 'Refill dog water', location: 'Dog Bowls', duration: 0, weight: 0.95, maxBacklog: 4 },
+        { type: 'coverage', name: 'Straighten coffee table', location: 'Coffee Table', duration: 4, weight: 1.15, maxBacklog: 4 },
+        { type: 'coverage', name: 'Straighten armchair', location: 'Armchair', duration: 4, weight: 0.95, maxBacklog: 4 }
     ];
 
     const poopCount = gameState.entities.filter(e => e.type === 'poop').length;
@@ -3191,12 +3289,35 @@ function generateRandomTasks() {
         console.log(`[TASKS] Poop: ${poopCount} | Toys: ${toyCount} | Backlog: ${taskBacklog} | Stress: ${stimLevel.toFixed(1)}`);
     }
 
+    const cleanupBacklogLimit = 5 + Math.min(1, gameState.day);
+
+    const pickTaskDefinition = (pool) => {
+        const available = pool.filter(chore => {
+            if (gameState.tasks.some(t => t.name === chore.name)) return false;
+            if (chore.maxBacklog != null && taskBacklog > chore.maxBacklog) return false;
+            if (chore.minStress != null && stimLevel < chore.minStress) return false;
+            if (chore.maxStress != null && stimLevel > chore.maxStress) return false;
+            return true;
+        });
+        if (!available.length) return null;
+
+        const totalWeight = available.reduce((sum, chore) => sum + (chore.weight || 1), 0);
+        let roll = Math.random() * totalWeight;
+        for (const chore of available) {
+            roll -= chore.weight || 1;
+            if (roll <= 0) {
+                return chore;
+            }
+        }
+        return available[available.length - 1];
+    };
+
     // POOP CLEANUP - Generate based on actual poop buildup
     if (poopCount > 0) {
         const hasPoopTask = gameState.tasks.some(t => t.name && t.name.startsWith('Clean'));
         // More likely to generate if lots of poop
         const poopChance = Math.min(0.8, poopCount * 0.15);
-        if (!hasPoopTask && Math.random() < poopChance && taskBacklog < 7 + gameState.day) {
+        if (!hasPoopTask && Math.random() < poopChance && taskBacklog < cleanupBacklogLimit) {
             console.log(`[TASK SPAWN] Creating poop cleanup task (poop: ${poopCount})`);
             gameState.tasks.push(
                 new Task(gameState.nextTaskId++, 'coverage', `Clean poop (${poopCount})`, 'Patio', 0, 0, poopCount)
@@ -3208,7 +3329,7 @@ function generateRandomTasks() {
     if (toyCount > 0) {
         const hasToyTask = gameState.tasks.some(t => t.name && t.name.startsWith('Collect'));
         const toyChance = Math.min(0.8, toyCount * 0.15);
-        if (!hasToyTask && Math.random() < toyChance && taskBacklog < 7 + gameState.day) {
+        if (!hasToyTask && Math.random() < toyChance && taskBacklog < cleanupBacklogLimit) {
             console.log(`[TASK SPAWN] Creating toy cleanup task (toys: ${toyCount})`);
             gameState.tasks.push(
                 new Task(gameState.nextTaskId++, 'coverage', `Collect toys (${toyCount})`, 'Toy Box', 0, 0, toyCount)
@@ -3218,14 +3339,14 @@ function generateRandomTasks() {
 
     // ROUTINE CHORES - Spawn based on day and task backlog
     // Higher stress = more tasks (player is losing control)
-    const stressMultiplier = 0.8 + (stimLevel / MAX_OVERSTIMULATION) * 1.2;
-    const baseSpawnChance = 0.35 + gameState.day * 0.1;
-    const spawnChance = baseSpawnChance * stressMultiplier;
+    const stressMultiplier = 0.65 + (stimLevel / MAX_OVERSTIMULATION) * 0.75;
+    const backlogMultiplier = taskBacklog <= 1 ? 1 : taskBacklog <= 3 ? 0.72 : 0.42;
+    const baseSpawnChance = 0.22 + gameState.day * 0.08;
+    const spawnChance = baseSpawnChance * stressMultiplier * backlogMultiplier;
 
-    if (Math.random() < spawnChance && taskBacklog < 7 + gameState.day) {
-        const chore = routineChores[Math.floor(Math.random() * routineChores.length)];
-        const alreadyExists = gameState.tasks.some(t => t.name === chore.name);
-        if (!alreadyExists) {
+    if (Math.random() < spawnChance && taskBacklog < 5 + gameState.day) {
+        const chore = pickTaskDefinition(routineChores);
+        if (chore) {
             console.log(`[TASK SPAWN] Creating routine chore: ${chore.name}`);
             gameState.tasks.push(
                 new Task(gameState.nextTaskId++, chore.type, chore.name, chore.location, chore.duration, 0, chore.duration || 1)
@@ -3235,17 +3356,19 @@ function generateRandomTasks() {
 
     // WIFE-ASSIGNED TASKS - More likely when stress is high
     const wifeChores = [
-        { type: 'coverage', name: 'Sweep kitchen', location: 'Sink', duration: 8 },
-        { type: 'hold', name: 'Feed baby', location: 'Baby', duration: 25 },
-        { type: 'fetch', name: 'Do dishes', location: 'Sink', duration: 0 },
-        { type: 'hold', name: 'Play with baby', location: 'Baby', duration: 20 },
+        { type: 'coverage', name: 'Sweep kitchen', location: 'Sink', duration: 7, weight: 1.0, maxBacklog: 4 },
+        { type: 'hold', name: 'Feed baby', location: 'Baby', duration: 20, weight: 0.5, maxBacklog: 2, maxStress: 68 },
+        { type: 'fetch', name: 'Do dishes', location: 'Sink', duration: 0, weight: 0.9, maxBacklog: 4 },
+        { type: 'hold', name: 'Play with baby', location: 'Baby', duration: 16, weight: 0.45, maxBacklog: 2, maxStress: 62 },
+        { type: 'coverage', name: 'Clear kitchen island', location: 'Kitchen Island', duration: 5, weight: 0.9, maxBacklog: 4 },
+        { type: 'fetch', name: 'Put groceries away', location: 'Fridge', duration: 0, weight: 0.8, maxBacklog: 4 },
     ];
 
-    const wifeChance = (0.15 + gameState.day * 0.05) * (1 + stimLevel / MAX_OVERSTIMULATION);
-    if (Math.random() < wifeChance && taskBacklog < 7 + gameState.day) {
-        const chore = wifeChores[Math.floor(Math.random() * wifeChores.length)];
-        const alreadyExists = gameState.tasks.some(t => t.name === chore.name);
-        if (!alreadyExists) {
+    const wifeBacklogMultiplier = taskBacklog <= 1 ? 1 : taskBacklog <= 3 ? 0.65 : 0.3;
+    const wifeChance = (0.08 + gameState.day * 0.04) * (0.85 + stimLevel / MAX_OVERSTIMULATION * 0.55) * wifeBacklogMultiplier;
+    if (Math.random() < wifeChance && taskBacklog < 4 + gameState.day) {
+        const chore = pickTaskDefinition(wifeChores);
+        if (chore) {
             console.log(`[TASK SPAWN] Creating wife chore: ${chore.name}`);
             gameState.tasks.push(
                 new Task(gameState.nextTaskId++, chore.type, chore.name, chore.location, chore.duration, 0, chore.duration || 1)
@@ -3308,7 +3431,7 @@ function endDay() {
     if (gameState.day < DAYS) {
         gameState.day++;
         gameState.time = 0;
-        gameState.eventTickInterval = Math.max(4, gameState.eventTickInterval - 0.5);
+        gameState.eventTickInterval = Math.max(MIN_EVENT_TICK_INTERVAL, gameState.eventTickInterval - DAY_EVENT_TICK_ACCELERATION);
         gameState.overstimulation = Math.max(0, gameState.overstimulation - 20); // Reset some stress between days
         resetDayFlags();
         resetMowerState();
@@ -4860,7 +4983,7 @@ function updateStressLogic(dt) {
     }
 
     // 2. Task pressure: incomplete tasks create ambient stress
-    const taskPressure = incompleteTasks / (5 + gameState.day);
+    const taskPressure = incompleteTasks / (6 + gameState.day * 1.5);
     stressRate += EXTRA_TASK_STRESS_RATE * taskPressure;
 
     // 2.5. Proximity stress: Dogs and baby nearby increase stress
@@ -4946,6 +5069,11 @@ function updateStressLogic(dt) {
             stressRate -= BASE_STILL_RATE;
             if (input.actionHeld) {
                 stressRate -= BASE_EXTRA_CALM_RATE;
+            }
+        } else if (totalPressureItems < 5) {
+            stressRate -= BASE_STILL_RATE * 0.4;
+            if (input.actionHeld) {
+                stressRate -= BASE_EXTRA_CALM_RATE * 0.45;
             }
         }
         // If lots to do, standing still gives no relief (but doesn't add stress)
@@ -5471,7 +5599,7 @@ function checkRelaxSpot(x, y) {
 }
 
 function checkToiletHiding(x, y) {
-    const INTERACT_DIST = 40;
+    const INTERACT_DIST = 56;
     const toilet = WORLD_OBJECTS.TOILET;
     
     if (!toilet) return false;
@@ -5493,7 +5621,7 @@ function checkToiletHiding(x, y) {
 }
 
 function checkCoffeeMachine(x, y) {
-    const INTERACT_DIST = 56;
+    const INTERACT_DIST = 64;
     const coffee = WORLD_OBJECTS.COFFEE_MACHINE;
     
     if (!coffee) return false;
