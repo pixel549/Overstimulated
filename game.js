@@ -18,9 +18,14 @@ const MIN_EVENT_TICK_INTERVAL = 5.5;
 const DAY_EVENT_TICK_ACCELERATION = 0.75;
 const DAYS = 2;
 const SPRINKLER_SCHEDULE = [45, 165, 225];
+const DOG_FEED_SCHEDULE = [30, 270];
 const BEER_TIME = 180;
 const CHICKEN_CURFEW_TIME = 240;
 const CHICKEN_PANIC_TIME = 270;
+const BABY_NAP_START = 120;
+const BABY_NAP_END = 180;
+const BABY_NAP_MIN_DURATION = 45;
+const BABY_NAP_MAX_DURATION = 60;
 
 // Debug mode (press D to toggle)
 let DEBUG_MODE = false;
@@ -413,7 +418,7 @@ const POIS = {
     SPRINKLER: { x: OUTDOOR_LAYOUT.SPRINKLER.x, y: OUTDOOR_LAYOUT.SPRINKLER.y, type: 'coverage', name: 'Sprinkler', room: 'DOG_YARD' },
     VACUUM: { x: ROOMS.CORRIDOR_RIGHT.x + 5, y: ROOMS.CORRIDOR_RIGHT.y + 1, type: 'tool', name: 'Vacuum', room: 'CORRIDOR_RIGHT' },
     BED: { x: ROOMS.MASTER_BEDROOM.x + 4, y: ROOMS.MASTER_BEDROOM.y + 10, type: 'relax', name: 'Bed', room: 'MASTER_BEDROOM' },
-    BABY_COT: { x: ROOMS.BABYS_ROOM.x + 8, y: ROOMS.BABYS_ROOM.y + 4, type: 'hold', name: 'Baby', room: 'BABYS_ROOM' },
+    BABY_COT: { x: ROOMS.BABYS_ROOM.x + 8, y: ROOMS.BABYS_ROOM.y + 4, type: 'hold', name: 'Baby Cot', room: 'BABYS_ROOM' },
     CHICKEN_FEEDER: { x: ROOMS.CHICKEN_YARD.x + 20, y: ROOMS.CHICKEN_YARD.y + 20, type: 'fetch', name: 'Chicken Feed', room: 'CHICKEN_YARD' },
     CHICKEN_RUN: { x: ROOMS.CHICKEN_RUN.x + 4, y: ROOMS.CHICKEN_RUN.y + 10, type: 'fetch', name: 'Chicken Run', room: 'CHICKEN_RUN' },
     DOG_BOWLS: { x: ROOMS.DOG_PATIO.x + 30 - 20, y: ROOMS.DOG_PATIO.y + 2, type: 'fetch', name: 'Dog Bowls', room: 'DOG_PATIO' }
@@ -478,6 +483,13 @@ registerWorldObjectPOI('COFFEE_TABLE_TASK', 'COFFEE_TABLE', 'coverage', 'Coffee 
 registerWorldObjectPOI('ARMCHAIR_TASK', 'ARMCHAIR', 'coverage', 'Armchair', 'LIVING_ROOM');
 registerWorldObjectPOI('KITCHEN_ISLAND_TASK', 'KITCHEN_ISLAND', 'coverage', 'Kitchen Island', 'KITCHEN');
 registerWorldObjectPOI('FRIDGE_TASK', 'FRIDGE', 'fetch', 'Fridge', 'KITCHEN');
+registerWorldObjectPOI('CHANGE_TABLE_TASK', 'CHANGE_TABLE', 'coverage', 'Change Table', 'BABYS_ROOM');
+registerWorldObjectPOI('NURSERY_DRESSER_TASK', 'NURSERY_DRESSER', 'coverage', 'Nursery Dresser', 'BABYS_ROOM');
+registerWorldObjectPOI('PLAY_MAT_TASK', 'PLAY_MAT', 'coverage', 'Play Mat', 'BABYS_ROOM');
+registerWorldObjectPOI('VANITY_TASK', 'VANITY', 'coverage', 'Vanity', 'ENSUITE');
+registerWorldObjectPOI('HOUSEMATE_BED_TASK', 'HOUSEMATE_BED', 'coverage', 'Housemate Bed', 'HOUSEMATE_ROOM');
+registerWorldObjectPOI('OFFICE_DESK_TASK', 'OFFICE_DESK', 'coverage', 'Office Desk', 'HOME_OFFICE');
+registerWorldObjectPOI('SPARE_BED_TASK', 'SPARE_BED', 'coverage', 'Spare Bed', 'SPARE_ROOM');
 
 // Sprite Cache - stores loaded character images
 let spriteCache = {
@@ -536,6 +548,41 @@ function loadSprites() {
     console.log(`Starting sprite load. Total sprites to load: ${totalCount}`);
 }
 
+function createInitialBabyNapState() {
+    return {
+        usedToday: false,
+        asleepInCot: false,
+        awaitingRetrieval: false,
+        sleepTimer: 0,
+        windowAnnounced: false,
+        missedWindow: false,
+        overtired: false
+    };
+}
+
+function createInitialNPCStates() {
+    return {
+        wife: { x: (ROOMS.KITCHEN.x + 2) * TILE_SIZE, y: (ROOMS.KITCHEN.y + 2) * TILE_SIZE, targetRoom: 'KITCHEN', moveSpeed: 37.5, canUseDoors: true, doorInteraction: null, currentPath: [], pathRecalcTimer: 0 },
+        housemate: { x: (ROOMS.SPARE_ROOM.x + 2) * TILE_SIZE, y: (ROOMS.SPARE_ROOM.y + 2) * TILE_SIZE, targetRoom: 'SPARE_ROOM', moveSpeed: 30, canUseDoors: true, doorInteraction: null, currentPath: [], pathRecalcTimer: 0 },
+        baby: {
+            x: (ROOMS.BABYS_ROOM.x + 4) * TILE_SIZE,
+            y: (ROOMS.BABYS_ROOM.y + 2) * TILE_SIZE,
+            targetRoom: 'BABYS_ROOM',
+            moveSpeed: 22.5,
+            canUseDoors: false,
+            currentPath: [],
+            pathRecalcTimer: 0,
+            activity: 'roaming',
+            activityTimer: 10,
+            carriedBy: null,
+            overtired: false
+        },
+        brownDog: { x: (ROOMS.LIVING_ROOM.x + 3) * TILE_SIZE, y: (ROOMS.LIVING_ROOM.y + 10) * TILE_SIZE, targetRoom: 'LIVING_ROOM', moveSpeed: 60, canUseDoors: false, currentPath: [], pathRecalcTimer: 0 },
+        blackDog: { x: (ROOMS.LIVING_ROOM.x + 5) * TILE_SIZE, y: (ROOMS.LIVING_ROOM.y + 10) * TILE_SIZE, targetRoom: 'LIVING_ROOM', moveSpeed: 67.5, canUseDoors: false, currentPath: [], pathRecalcTimer: 0 },
+        munty: null
+    };
+}
+
 // Game State (defined after ROOMS/POIS so we can reference them)
 let gameState = {
     day: 1,
@@ -573,13 +620,8 @@ let gameState = {
     coffeeProgress: 0,
     coffeeBrewTime: 5, // 5 seconds to brew
     isHidingInToilet: false,
-    npcStates: {
-        wife: { x: (ROOMS.KITCHEN.x + 2) * TILE_SIZE, y: (ROOMS.KITCHEN.y + 2) * TILE_SIZE, targetRoom: 'KITCHEN', moveSpeed: 37.5, canUseDoors: true, doorInteraction: null, currentPath: [], pathRecalcTimer: 0 },
-        housemate: { x: (ROOMS.SPARE_ROOM.x + 2) * TILE_SIZE, y: (ROOMS.SPARE_ROOM.y + 2) * TILE_SIZE, targetRoom: 'SPARE_ROOM', moveSpeed: 30, canUseDoors: true, doorInteraction: null, currentPath: [], pathRecalcTimer: 0 },
-        baby: { x: (ROOMS.BABYS_ROOM.x + 4) * TILE_SIZE, y: (ROOMS.BABYS_ROOM.y + 2) * TILE_SIZE, targetRoom: 'BABYS_ROOM', moveSpeed: 22.5, canUseDoors: false, currentPath: [], pathRecalcTimer: 0 },
-        brownDog: { x: (ROOMS.LIVING_ROOM.x + 3) * TILE_SIZE, y: (ROOMS.LIVING_ROOM.y + 10) * TILE_SIZE, targetRoom: 'LIVING_ROOM', moveSpeed: 60, canUseDoors: false, currentPath: [], pathRecalcTimer: 0 },
-        blackDog: { x: (ROOMS.LIVING_ROOM.x + 5) * TILE_SIZE, y: (ROOMS.LIVING_ROOM.y + 10) * TILE_SIZE, targetRoom: 'LIVING_ROOM', moveSpeed: 67.5, canUseDoors: false, currentPath: [], pathRecalcTimer: 0 },
-    },
+    npcStates: createInitialNPCStates(),
+    babyNap: createInitialBabyNapState(),
     doorsOpened: {},
     entities: [],
     chickens: [],
@@ -600,7 +642,9 @@ let gameState = {
     sprinkler: { x: POIS.SPRINKLER.x * TILE_SIZE, y: POIS.SPRINKLER.y * TILE_SIZE },
     timeline: {
         nextSprinklerIndex: 0,
+        nextDogFeedIndex: 0,
         activeSprinklerTrigger: null,
+        activeDogFeedTrigger: null,
         beerTaskSpawned: false,
         chickenCurfewStarted: false
     }
@@ -720,14 +764,8 @@ function initGame() {
     gameState.dad.width = DAD_HITBOX_SIZE;
     gameState.dad.height = DAD_HITBOX_SIZE;
     gameState.dad.carrying = null;
-    gameState.npcStates = {
-        wife: { x: (ROOMS.KITCHEN.x + 2) * TILE_SIZE, y: (ROOMS.KITCHEN.y + 2) * TILE_SIZE, targetRoom: 'KITCHEN', moveSpeed: 37.5, canUseDoors: true, doorInteraction: null, currentPath: [], pathRecalcTimer: 0 },
-        housemate: { x: (ROOMS.SPARE_ROOM.x + 2) * TILE_SIZE, y: (ROOMS.SPARE_ROOM.y + 2) * TILE_SIZE, targetRoom: 'SPARE_ROOM', moveSpeed: 30, canUseDoors: true, doorInteraction: null, currentPath: [], pathRecalcTimer: 0 },
-        baby: { x: (ROOMS.BABYS_ROOM.x + 4) * TILE_SIZE, y: (ROOMS.BABYS_ROOM.y + 2) * TILE_SIZE, targetRoom: 'BABYS_ROOM', moveSpeed: 22.5, canUseDoors: false, currentPath: [], pathRecalcTimer: 0 },
-        brownDog: { x: (ROOMS.LIVING_ROOM.x + 3) * TILE_SIZE, y: (ROOMS.LIVING_ROOM.y + 10) * TILE_SIZE, targetRoom: 'LIVING_ROOM', moveSpeed: 60, canUseDoors: false, currentPath: [], pathRecalcTimer: 0 },
-        blackDog: { x: (ROOMS.LIVING_ROOM.x + 5) * TILE_SIZE, y: (ROOMS.LIVING_ROOM.y + 10) * TILE_SIZE, targetRoom: 'LIVING_ROOM', moveSpeed: 67.5, canUseDoors: false, currentPath: [], pathRecalcTimer: 0 },
-        munty: null
-    };
+    gameState.npcStates = createInitialNPCStates();
+    gameState.babyNap = createInitialBabyNapState();
     DOORS.forEach((door, index) => {
         door.open = RAW_DOORS[index].open;
     });
@@ -810,11 +848,20 @@ function resetDayFlags() {
     gameState.sprinklerActive = false;
     gameState.beerClaimed = false;
     gameState.chickensLocked = false;
+    gameState.babyNap = createInitialBabyNapState();
+    if (gameState.npcStates && gameState.npcStates.baby) {
+        gameState.npcStates.baby.carriedBy = null;
+        gameState.npcStates.baby.overtired = false;
+        gameState.npcStates.baby.activity = 'roaming';
+        gameState.npcStates.baby.activityTimer = 10;
+    }
     gameState.sprinkler.x = POIS.SPRINKLER.x * TILE_SIZE;
     gameState.sprinkler.y = POIS.SPRINKLER.y * TILE_SIZE;
     gameState.timeline = {
         nextSprinklerIndex: 0,
+        nextDogFeedIndex: 0,
         activeSprinklerTrigger: null,
+        activeDogFeedTrigger: null,
         beerTaskSpawned: false,
         chickenCurfewStarted: false
     };
@@ -1015,6 +1062,21 @@ function getPlaytestDebugSnapshot() {
             progress: Number((nearbyTask.progress || 0).toFixed(1)),
             maxProgress: nearbyTask.maxProgress || 0
         } : null,
+        baby: {
+            carrying: gameState.dad.carrying === 'BABY',
+            asleepInCot: !!gameState.babyNap.asleepInCot,
+            awaitingRetrieval: !!gameState.babyNap.awaitingRetrieval,
+            napWindowOpen: isBabyNapWindowOpen(),
+            overtired: !!gameState.babyNap.overtired,
+            napTimer: Number(gameState.babyNap.sleepTimer.toFixed(1))
+        },
+        dogFeed: {
+            active: isDogFeedEventActive(),
+            nextAt: DOG_FEED_SCHEDULE[gameState.timeline.nextDogFeedIndex] ?? null,
+            overdue: gameState.timeline.activeDogFeedTrigger !== null
+                ? Number(Math.max(0, gameState.time - gameState.timeline.activeDogFeedTrigger).toFixed(1))
+                : 0
+        },
         recovery: playtestBot.recoveryTimer > 0 && playtestBot.recoveryTarget ? {
             timeLeft: Number(playtestBot.recoveryTimer.toFixed(2)),
             x: Math.round(playtestBot.recoveryTarget.x),
@@ -1077,6 +1139,24 @@ function formatPlaytestEvent(event) {
             return `${stamp} toilet exit`;
         case 'relax_exit':
             return `${stamp} relax exit`;
+        case 'baby_nap_window_open':
+            return `${stamp} nap window open`;
+        case 'baby_nap_started':
+            return `${stamp} baby nap (${event.duration}s)`;
+        case 'baby_nap_ended':
+            return `${stamp} baby woke (${event.reason})`;
+        case 'baby_nap_missed':
+            return `${stamp} missed nap`;
+        case 'baby_picked_up':
+            return `${stamp} picked up baby`;
+        case 'baby_set_down':
+            return `${stamp} set baby down`;
+        case 'baby_retrieved_by_wife':
+            return `${stamp} wife retrieved baby`;
+        case 'dog_feed_started':
+            return `${stamp} dogs need feeding`;
+        case 'dog_feed_completed':
+            return `${stamp} dogs fed`;
         case 'day_completed':
             return `${stamp} day clear`;
         case 'run_started':
@@ -1126,6 +1206,25 @@ function updatePlaytestUI() {
         detailLines.push(snapshot.targetDoor
             ? `Door ${snapshot.targetDoor.name} [${snapshot.targetDoor.open ? 'open' : 'closed'}]`
             : 'Door none');
+        if (snapshot.baby) {
+            const babyState = snapshot.baby.asleepInCot
+                ? `Baby asleep ${snapshot.baby.napTimer}s`
+                : snapshot.baby.awaitingRetrieval
+                    ? 'Baby awake in cot'
+                    : snapshot.baby.carrying
+                        ? 'Carrying baby'
+                        : snapshot.baby.overtired
+                            ? 'Baby overtired'
+                            : snapshot.baby.napWindowOpen
+                                ? 'Nap window open'
+                                : 'Baby active';
+            detailLines.push(babyState);
+        }
+        if (snapshot.dogFeed) {
+            detailLines.push(snapshot.dogFeed.active
+                ? `Dog feed overdue ${snapshot.dogFeed.overdue}s`
+                : `Dog feed @ ${snapshot.dogFeed.nextAt ?? '-' }s`);
+        }
         detailLines.push(snapshot.nearbyTask
             ? `Task ${snapshot.nearbyTask.name} ${snapshot.nearbyTask.progress}/${snapshot.nearbyTask.maxProgress}`
             : 'Task none nearby');
@@ -1364,6 +1463,8 @@ function getDirectPlayerSnapshot() {
     const nearbyDoor = findNearbyDoor();
     const relaxSpot = checkRelaxSpot(gameState.dad.x, gameState.dad.y);
     const toiletSpot = checkToiletHiding(gameState.dad.x, gameState.dad.y);
+    const babySpot = checkNearbyBaby(gameState.dad.x, gameState.dad.y);
+    const babyCotSpot = checkBabyCotSpot(gameState.dad.x, gameState.dad.y);
     const modal = document.getElementById('modal');
     const relaxTarget = getRelaxTargetPoint(dadCenterX, dadCenterY);
     const standbyTarget = getStandbyTarget(dadCenterX, dadCenterY);
@@ -1402,13 +1503,38 @@ function getDirectPlayerSnapshot() {
         nearbyDoor: serializeDirectPlayerDoor(nearbyDoor),
         relaxSpot: relaxSpot ? { key: relaxSpot.key, type: relaxSpot.obj.type } : null,
         toiletSpot: toiletSpot ? { canHide: !!toiletSpot.canHide, doorClosed: !!toiletSpot.doorClosed } : null,
+        nearBaby: babySpot ? { x: Math.round(babySpot.x), y: Math.round(babySpot.y) } : null,
+        babyCotSpot: babyCotSpot ? {
+            canNap: !!babyCotSpot.canNap,
+            canWake: !!babyCotSpot.canWake,
+            asleep: !!babyCotSpot.asleep,
+            x: Math.round(babyCotSpot.x),
+            y: Math.round(babyCotSpot.y)
+        } : null,
         nearCoffee: checkCoffeeMachine(gameState.dad.x, gameState.dad.y),
         notification: gameState.notification ? {
             message: gameState.notification.message,
             timeLeft: Number(gameState.notification.timeLeft.toFixed(2))
         } : null,
+        baby: {
+            carrying: gameState.dad.carrying === 'BABY',
+            asleepInCot: !!gameState.babyNap.asleepInCot,
+            awaitingRetrieval: !!gameState.babyNap.awaitingRetrieval,
+            napWindowOpen: isBabyNapWindowOpen(),
+            overtired: !!gameState.babyNap.overtired,
+            napTimer: Number(gameState.babyNap.sleepTimer.toFixed(2))
+        },
+        dogFeed: {
+            active: isDogFeedEventActive(),
+            nextAt: DOG_FEED_SCHEDULE[gameState.timeline.nextDogFeedIndex] ?? null,
+            overdue: gameState.timeline.activeDogFeedTrigger !== null
+                ? Number(Math.max(0, gameState.time - gameState.timeline.activeDogFeedTrigger).toFixed(2))
+                : 0
+        },
         pois: {
             livingRoom: { x: Math.round(WAYPOINTS.LIVING_ROOM.pixelX), y: Math.round(WAYPOINTS.LIVING_ROOM.pixelY) },
+            baby: { x: Math.round(gameState.npcStates.baby.x), y: Math.round(gameState.npcStates.baby.y) },
+            babyCot: getBabyCotCenter(),
             couch: getWorldObjectCenter('COUCH'),
             bed: getWorldObjectCenter('BED'),
             relax: relaxTarget ? { x: relaxTarget.x, y: relaxTarget.y, name: relaxTarget.name } : null,
@@ -2184,10 +2310,154 @@ function updatePlaytestBot(dt) {
 }
 
 function getPOIByName(name) {
+    if (name === 'Baby') {
+        const baby = gameState.npcStates && gameState.npcStates.baby;
+        if (!baby || gameState.babyNap.asleepInCot) return null;
+        return {
+            x: baby.x / TILE_SIZE,
+            y: baby.y / TILE_SIZE,
+            type: 'hold',
+            name: 'Baby',
+            room: getRoomAt(baby.x, baby.y) || 'BABYS_ROOM'
+        };
+    }
+
     for (const poi of Object.values(POIS)) {
         if (poi.name === name) return poi;
     }
     return null;
+}
+
+function getBabyCotCenter() {
+    const cot = WORLD_OBJECTS.BABY_COT_OBJECT;
+    return {
+        x: Math.round((cot.x + OFFSET_X + cot.w / 2) * TILE_SIZE),
+        y: Math.round((cot.y + OFFSET_Y + cot.h / 2) * TILE_SIZE)
+    };
+}
+
+function isBabyNapWindowOpen() {
+    return gameState.time >= BABY_NAP_START && gameState.time < BABY_NAP_END && !gameState.babyNap.usedToday;
+}
+
+function isBabyAtCot() {
+    return gameState.babyNap.asleepInCot || gameState.babyNap.awaitingRetrieval;
+}
+
+function positionBabyAtCot() {
+    const baby = gameState.npcStates.baby;
+    const cot = getBabyCotCenter();
+    baby.x = cot.x;
+    baby.y = cot.y + 6;
+    baby.targetRoom = 'BABYS_ROOM';
+}
+
+function clearOutstandingBabyTasks() {
+    gameState.tasks = gameState.tasks.filter(task => task.location !== 'Baby' && task.name !== 'Settle overtired baby');
+}
+
+function wakeBabyFromNap(reason = 'timer') {
+    if (!isBabyAtCot()) return false;
+
+    const baby = gameState.npcStates.baby;
+    gameState.babyNap.asleepInCot = false;
+    gameState.babyNap.sleepTimer = 0;
+    baby.carriedBy = null;
+    baby.activity = 'awake';
+    baby.activityTimer = 6;
+    positionBabyAtCot();
+
+    if (reason === 'dad_pickup' || reason === 'manual_pickup') {
+        gameState.babyNap.awaitingRetrieval = false;
+    } else {
+        gameState.babyNap.awaitingRetrieval = true;
+        notifyPlayer('Baby woke up. Wife is heading for the cot.', 2.8);
+        addDialogue('baby', 'Wahhh!', 4, baby.x, baby.y - 42);
+        addDialogue('wife', "I'll get him.", 3.5);
+    }
+
+    recordPlaytestEvent('baby_nap_ended', { reason });
+    return true;
+}
+
+function pickUpBaby() {
+    const baby = gameState.npcStates.baby;
+    if (!baby || gameState.dad.carrying) return false;
+
+    if (gameState.babyNap.asleepInCot) {
+        wakeBabyFromNap('dad_pickup');
+    }
+
+    gameState.babyNap.awaitingRetrieval = false;
+    baby.carriedBy = 'dad';
+    baby.activity = 'carried';
+    baby.activityTimer = 0;
+    gameState.dad.carrying = 'BABY';
+    notifyPlayer('Picked up baby.', 2.0);
+    recordPlaytestEvent('baby_picked_up');
+    return true;
+}
+
+function setDownCarriedBaby() {
+    const baby = gameState.npcStates.baby;
+    if (!baby || gameState.dad.carrying !== 'BABY') return false;
+
+    const dadCenterX = gameState.dad.x + gameState.dad.width / 2;
+    const dadCenterY = gameState.dad.y + gameState.dad.height / 2;
+    gameState.dad.carrying = null;
+    baby.carriedBy = null;
+    baby.activity = 'roaming';
+    baby.activityTimer = 8 + Math.random() * 5;
+    baby.targetRoom = getRoomAt(dadCenterX, dadCenterY) || 'LIVING_ROOM';
+    baby.x = dadCenterX + 18;
+    baby.y = dadCenterY + 8;
+    pushOutOfSolids(baby, 20, 20);
+    notifyPlayer('Set baby down.', 2.0);
+    recordPlaytestEvent('baby_set_down', { room: baby.targetRoom });
+    return true;
+}
+
+function startBabyNap() {
+    const baby = gameState.npcStates.baby;
+    if (!baby || gameState.dad.carrying !== 'BABY' || !isBabyNapWindowOpen()) return false;
+
+    const napDuration = BABY_NAP_MIN_DURATION + Math.random() * (BABY_NAP_MAX_DURATION - BABY_NAP_MIN_DURATION);
+    gameState.dad.carrying = null;
+    baby.carriedBy = null;
+    baby.activity = 'sleeping';
+    baby.activityTimer = napDuration;
+    baby.overtired = false;
+    gameState.babyNap.usedToday = true;
+    gameState.babyNap.asleepInCot = true;
+    gameState.babyNap.awaitingRetrieval = false;
+    gameState.babyNap.sleepTimer = napDuration;
+    gameState.babyNap.missedWindow = false;
+    gameState.babyNap.overtired = false;
+    positionBabyAtCot();
+    clearOutstandingBabyTasks();
+    gameState.overstimulation = Math.max(0, gameState.overstimulation - 6);
+    notifyPlayer(`Baby down for nap. ${Math.ceil(napDuration)}s of quiet.`, 3.2);
+    addDialogue('dad', 'Please stay asleep.', 4);
+    recordPlaytestEvent('baby_nap_started', { duration: Number(napDuration.toFixed(1)) });
+    return true;
+}
+
+function triggerMissedBabyNap() {
+    if (gameState.babyNap.usedToday || gameState.babyNap.missedWindow) return false;
+
+    const baby = gameState.npcStates.baby;
+    gameState.babyNap.missedWindow = true;
+    gameState.babyNap.overtired = true;
+    if (baby) {
+        baby.overtired = true;
+        baby.activityTimer = Math.min(baby.activityTimer || 0, 4);
+    }
+    addTaskIfMissing('Settle overtired baby', 'Baby', 'hold', 18, 18);
+    gameState.overstimulation = Math.min(MAX_OVERSTIMULATION, gameState.overstimulation + 8);
+    notifyPlayer('Missed nap window. Baby is overtired.', 3.2);
+    addDialogue('baby', 'Wahhh!', 4);
+    recordPlaytestEvent('baby_nap_missed');
+    return true;
 }
 
 function addTaskIfMissing(name, location, type, duration = 0, maxProgress = 1) {
@@ -2363,8 +2633,12 @@ function update(deltaTime) {
         }
 
         slowdownMultiplier = Math.max(0.3, slowdownMultiplier); // Cap at 30% speed minimum
-        const mowerMultiplier = gameState.dad.carrying === 'MOWER' ? 0.5 : 1.0;
-        const moveSpeed = baseSpeed * sprintMultiplier * slowdownMultiplier * mowerMultiplier * effectiveDeltaTime;
+    const carryMultiplier = gameState.dad.carrying === 'MOWER'
+        ? 0.5
+        : gameState.dad.carrying === 'BABY'
+            ? 0.8
+            : 1.0;
+    const moveSpeed = baseSpeed * sprintMultiplier * slowdownMultiplier * carryMultiplier * effectiveDeltaTime;
 
         if (input.up) newY -= moveSpeed;
         if (input.down) newY += moveSpeed;
@@ -2452,6 +2726,8 @@ function update(deltaTime) {
         const relaxSpot = checkRelaxSpot(gameState.dad.x, gameState.dad.y);
         const toiletSpot = checkToiletHiding(gameState.dad.x, gameState.dad.y);
         const mowerSpot = checkMower(gameState.dad.x, gameState.dad.y);
+        const nearbyBaby = checkNearbyBaby(gameState.dad.x, gameState.dad.y);
+        const babyCotSpot = checkBabyCotSpot(gameState.dad.x, gameState.dad.y);
         // Priority order: exiting a special state > tasks > entering a special state > doors
         if (gameState.isRelaxing) {
             gameState.isRelaxing = false;
@@ -2459,6 +2735,19 @@ function update(deltaTime) {
         }
         else if (gameState.isHidingInToilet) {
             gameState.isHidingInToilet = false;
+        }
+        else if (gameState.dad.carrying === 'BABY' && babyCotSpot && babyCotSpot.canNap) {
+            startBabyNap();
+        }
+        else if (nearbyBaby) {
+            pickUpBaby();
+        }
+        else if (babyCotSpot && babyCotSpot.canWake) {
+            wakeBabyFromNap('manual_pickup');
+            pickUpBaby();
+        }
+        else if (gameState.dad.carrying === 'BABY') {
+            setDownCarriedBaby();
         }
         else if (nearbyTask) {
             if (nearbyTask.type === 'fetch') {
@@ -3241,6 +3530,10 @@ function completeTask(taskId) {
             finishSprinklerEvent();
         }
 
+        if (task.name === 'FEED DOGS') {
+            finishDogFeedEvent();
+        }
+
         // Beer task completion - burp and review
         if (task.name === 'GET BEER') {
             gameState.beerClaimed = true;
@@ -3265,6 +3558,15 @@ function completeTask(taskId) {
         if (task.name === 'ROUND UP CHICKENS') {
             resolveChickenCurfew();
         }
+
+        if (task.name === 'Settle overtired baby') {
+            gameState.babyNap.overtired = false;
+            if (gameState.npcStates.baby) {
+                gameState.npcStates.baby.overtired = false;
+                gameState.npcStates.baby.activityTimer = 10;
+            }
+            notifyPlayer('Baby settled down.', 2.6);
+        }
     }
 }
 
@@ -3276,7 +3578,12 @@ function generateRandomTasks() {
         { type: 'coverage', name: 'Vacuum living room', location: 'Vacuum', duration: 5, weight: 1.0, maxBacklog: 4 },
         { type: 'fetch', name: 'Refill dog water', location: 'Dog Bowls', duration: 0, weight: 0.95, maxBacklog: 4 },
         { type: 'coverage', name: 'Straighten coffee table', location: 'Coffee Table', duration: 4, weight: 1.15, maxBacklog: 4 },
-        { type: 'coverage', name: 'Straighten armchair', location: 'Armchair', duration: 4, weight: 0.95, maxBacklog: 4 }
+        { type: 'coverage', name: 'Straighten armchair', location: 'Armchair', duration: 4, weight: 0.95, maxBacklog: 4 },
+        { type: 'coverage', name: 'Tidy play mat', location: 'Play Mat', duration: 5, weight: 0.92, maxBacklog: 3 },
+        { type: 'coverage', name: 'Reset change table', location: 'Change Table', duration: 4, weight: 0.78, maxBacklog: 3 },
+        { type: 'coverage', name: 'Wipe vanity', location: 'Vanity', duration: 4, weight: 0.72, maxBacklog: 3 },
+        { type: 'coverage', name: 'Clear office desk', location: 'Office Desk', duration: 5, weight: 0.82, maxBacklog: 3 },
+        { type: 'coverage', name: 'Make spare bed', location: 'Spare Bed', duration: 5, weight: 0.7, maxBacklog: 3 }
     ];
 
     const poopCount = gameState.entities.filter(e => e.type === 'poop').length;
@@ -3300,6 +3607,8 @@ function generateRandomTasks() {
             if (chore.maxBacklog != null && taskBacklog > chore.maxBacklog) return false;
             if (chore.minStress != null && stimLevel < chore.minStress) return false;
             if (chore.maxStress != null && stimLevel > chore.maxStress) return false;
+            if (chore.location === 'Baby' && gameState.babyNap.asleepInCot) return false;
+            if (chore.location === 'Dog Bowls' && isDogFeedEventActive()) return false;
             return true;
         });
         if (!available.length) return null;
@@ -3365,6 +3674,9 @@ function generateRandomTasks() {
         { type: 'hold', name: 'Play with baby', location: 'Baby', duration: 16, weight: 0.45, maxBacklog: 2, maxStress: 62 },
         { type: 'coverage', name: 'Clear kitchen island', location: 'Kitchen Island', duration: 5, weight: 0.9, maxBacklog: 4 },
         { type: 'fetch', name: 'Put groceries away', location: 'Fridge', duration: 0, weight: 0.8, maxBacklog: 4 },
+        { type: 'coverage', name: 'Sort nursery dresser', location: 'Nursery Dresser', duration: 5, weight: 0.72, maxBacklog: 3 },
+        { type: 'coverage', name: 'Straighten housemate bed', location: 'Housemate Bed', duration: 5, weight: 0.56, maxBacklog: 3 },
+        { type: 'coverage', name: 'Clear office desk', location: 'Office Desk', duration: 5, weight: 0.68, maxBacklog: 3 },
     ];
 
     const wifeBacklogMultiplier = taskBacklog <= 1 ? 1 : taskBacklog <= 3 ? 0.65 : 0.3;
@@ -3395,9 +3707,8 @@ const rngEvents = {
     },
     babyWakeup: (dt) => {
         // Random chance for baby to wake up early
-        if (gameState.npcStates.baby && gameState.npcStates.baby.activity === 'sleeping' && Math.random() < 0.00008 * gameState.day) {
-            gameState.npcStates.baby.activity = 'roaming';
-            gameState.npcStates.baby.activityTimer = 0;
+        if (gameState.babyNap.asleepInCot && gameState.babyNap.sleepTimer > 12 && Math.random() < 0.00008 * gameState.day) {
+            wakeBabyFromNap('early');
             spawnAudioRing(gameState.npcStates.baby.x, gameState.npcStates.baby.y, 100);
         }
     },
@@ -3815,6 +4126,27 @@ function updateNPCs(deltaTime) {
 
 // --- Wife AI ---
 function updateWife(wife, deltaTime) {
+    if (gameState.babyNap.awaitingRetrieval) {
+        const baby = gameState.npcStates.baby;
+        positionBabyAtCot();
+        wife.targetRoom = 'BABYS_ROOM';
+        const cot = getBabyCotCenter();
+        navigateToTarget(wife, cot.x, cot.y, deltaTime, 52);
+        if (Math.hypot(wife.x - cot.x, wife.y - cot.y) < 60) {
+            gameState.babyNap.awaitingRetrieval = false;
+            baby.activity = 'roaming';
+            baby.activityTimer = 10 + Math.random() * 6;
+            baby.targetRoom = 'LIVING_ROOM';
+            baby.carriedBy = null;
+            baby.x = wife.x + 18;
+            baby.y = wife.y + 8;
+            notifyPlayer('Wife scooped the baby up from the cot.', 2.8);
+            addDialogue('wife', "I've got him.", 3.5, wife.x, wife.y - 46);
+            recordPlaytestEvent('baby_retrieved_by_wife');
+        }
+        return;
+    }
+
     // Check if wife was called by bark and should come help
     if (wife.helpingTimer > 0 && wife.targetX && wife.targetY) {
         const task = wife.helpTargetTaskId != null ? gameState.tasks.find(t => t.id === wife.helpTargetTaskId) : null;
@@ -3944,32 +4276,49 @@ function updateJake(jake, deltaTime) {
 
 // --- Baby AI ---
 function updateBaby(baby, deltaTime) {
-    // Very slow, roams, needs adult in room unless asleep in baby room
-    // Will cry when player doesn't do what he wants
-
     if (!baby.activity) baby.activity = 'roaming';
     if (!baby.activityTimer) baby.activityTimer = 0;
 
-    baby.activityTimer -= deltaTime;
+    baby.overtired = !!gameState.babyNap.overtired;
 
-    // Check if in baby room - can be alone if there
-    const inBabyRoom = isInRoom(baby, 'BABYS_ROOM');
-
-    if (baby.activityTimer <= 0) {
-        const roll = Math.random();
-        if (roll < 0.4 && inBabyRoom) {
-            baby.activity = 'sleeping';
-            baby.activityTimer = 30 + Math.random() * 20;
-        } else {
-            baby.activity = 'roaming';
-            baby.targetRoom = Math.random() < 0.7 ? 'LIVING_ROOM' : 'BABYS_ROOM';
-            baby.activityTimer = 8 + Math.random() * 7;
-        }
+    if (baby.carriedBy === 'dad') {
+        const dadCenterX = gameState.dad.x + gameState.dad.width / 2;
+        const dadCenterY = gameState.dad.y + gameState.dad.height / 2;
+        baby.x = dadCenterX + 16;
+        baby.y = dadCenterY - 6;
+        baby.activity = 'carried';
+        baby.activityTimer = 0;
+        return;
     }
 
-    // Baby moves very slowly
+    if (gameState.babyNap.asleepInCot) {
+        positionBabyAtCot();
+        baby.activity = 'sleeping';
+        gameState.babyNap.sleepTimer = Math.max(0, gameState.babyNap.sleepTimer - deltaTime);
+        baby.activityTimer = gameState.babyNap.sleepTimer;
+        if (gameState.babyNap.sleepTimer <= 0) {
+            wakeBabyFromNap('timer');
+        }
+        return;
+    }
+
+    if (gameState.babyNap.awaitingRetrieval) {
+        positionBabyAtCot();
+        baby.activity = 'awake';
+        baby.activityTimer = 0;
+        return;
+    }
+
+    baby.activityTimer -= deltaTime;
+
+    if (baby.activityTimer <= 0) {
+        baby.activity = 'roaming';
+        baby.targetRoom = Math.random() < (baby.overtired ? 0.82 : 0.7) ? 'LIVING_ROOM' : 'BABYS_ROOM';
+        baby.activityTimer = baby.overtired ? 4 + Math.random() * 4 : 8 + Math.random() * 7;
+    }
+
     const originalSpeed = baby.moveSpeed;
-    baby.moveSpeed = 15; // Very slow
+    baby.moveSpeed = 15;
     moveNPC(baby, deltaTime, [baby.targetRoom || 'LIVING_ROOM', 'BABYS_ROOM', 'LIVING_ROOM']);
     baby.moveSpeed = originalSpeed;
 }
@@ -4000,8 +4349,9 @@ function updateMomo(momo, deltaTime) {
     const dogBowls = POIS.DOG_BOWLS;
     const bowlX = dogBowls.x * TILE_SIZE;
     const bowlY = dogBowls.y * TILE_SIZE;
+    const hungryForDinner = isDogFeedEventActive();
 
-    let someoneNearBowls = false;
+    let someoneNearBowls = hungryForDinner;
     let closestPersonDist = Infinity;
     for (const person of people) {
         const distToBowl = Math.hypot(person.x - bowlX, person.y - bowlY);
@@ -4096,8 +4446,9 @@ function updatePiper(piper, deltaTime) {
     const bowlX = dogBowls.x * TILE_SIZE;
     const bowlY = dogBowls.y * TILE_SIZE;
     const people = [{x: dad.x, y: dad.y}, wife, jake];
+    const hungryForDinner = isDogFeedEventActive();
 
-    let someoneNearBowls = false;
+    let someoneNearBowls = hungryForDinner;
     let closestPersonDist = Infinity;
     for (const person of people) {
         if (!person) continue;
@@ -4184,8 +4535,9 @@ function updateMunty(munty, deltaTime) {
     const dogBowls = POIS.DOG_BOWLS;
     const bowlX = dogBowls.x * TILE_SIZE;
     const bowlY = dogBowls.y * TILE_SIZE;
+    const hungryForDinner = isDogFeedEventActive();
 
-    let someoneNearBowls = false;
+    let someoneNearBowls = hungryForDinner;
     for (const person of people) {
         const distToBowl = Math.hypot(person.x - bowlX, person.y - bowlY);
         if (distToBowl < 150) {
@@ -4862,6 +5214,29 @@ function finishSprinklerEvent() {
     notifyPlayer("Sprinkler moved.");
 }
 
+function isDogFeedEventActive() {
+    return gameState.timeline.activeDogFeedTrigger !== null;
+}
+
+function startDogFeedEvent(triggerTime) {
+    gameState.timeline.activeDogFeedTrigger = triggerTime;
+    addTaskIfMissing('FEED DOGS', 'Dog Bowls', 'fetch');
+    notifyPlayer('Dogs need feeding.');
+    addDialogue('momo', '[FOOD NOW!]', 3.0);
+    addDialogue('piper', '[BOWL EMERGENCY!]', 3.0);
+    recordPlaytestEvent('dog_feed_started', { triggerTime });
+}
+
+function finishDogFeedEvent() {
+    if (!isDogFeedEventActive()) return;
+    gameState.timeline.nextDogFeedIndex++;
+    gameState.timeline.activeDogFeedTrigger = null;
+    gameState.overstimulation = Math.max(0, gameState.overstimulation - 4);
+    notifyPlayer('Dogs fed.', 2.6);
+    addDialogue('momo', '[SUSTENANCE!]', 2.5);
+    recordPlaytestEvent('dog_feed_completed', { time: Number(gameState.time.toFixed(2)) });
+}
+
 function startSprinklerEvent(triggerTime) {
     gameState.timeline.activeSprinklerTrigger = triggerTime;
     gameState.sprinklerMoved = false;
@@ -4934,6 +5309,30 @@ function startChickenCurfew() {
 function updateTimeline(dt) {
     const time = gameState.time;
     const nextSprinklerTime = SPRINKLER_SCHEDULE[gameState.timeline.nextSprinklerIndex];
+    const nextDogFeedTime = DOG_FEED_SCHEDULE[gameState.timeline.nextDogFeedIndex];
+
+    if (!gameState.babyNap.windowAnnounced && isBabyNapWindowOpen()) {
+        gameState.babyNap.windowAnnounced = true;
+        notifyPlayer('Nap window open. Take baby to the cot.', 3.0);
+        addDialogue('dad', 'Right. Nap time.', 3.5);
+        recordPlaytestEvent('baby_nap_window_open');
+    }
+
+    if (time >= BABY_NAP_END && !gameState.babyNap.usedToday && !gameState.babyNap.missedWindow) {
+        triggerMissedBabyNap();
+    }
+
+    if (nextDogFeedTime !== undefined && time >= nextDogFeedTime && gameState.timeline.activeDogFeedTrigger === null) {
+        startDogFeedEvent(nextDogFeedTime);
+    }
+
+    if (gameState.timeline.activeDogFeedTrigger !== null) {
+        const overdueTime = time - gameState.timeline.activeDogFeedTrigger;
+        if (overdueTime >= 15) {
+            const penalty = overdueTime >= 35 ? 1.9 : 1.2;
+            gameState.overstimulation += penalty * dt;
+        }
+    }
 
     if (nextSprinklerTime !== undefined && time >= nextSprinklerTime && gameState.timeline.activeSprinklerTrigger === null) {
         startSprinklerEvent(nextSprinklerTime);
@@ -5052,6 +5451,10 @@ function updateStressLogic(dt) {
     } else if (piperNearby && babyNearby) {
         // Piper + Baby only - they need at least 2 to be stressful
         proximityStress += 0.25; // 0.25 stress/sec (Piper's share: 0.15, Baby's share: 0.1)
+    }
+
+    if (gameState.babyNap.overtired && !gameState.babyNap.asleepInCot) {
+        proximityStress += 0.12;
     }
 
     stressRate += proximityStress;
@@ -5921,6 +6324,8 @@ function drawHUD() {
         statusText = 'Relaxing...';
     } else if (gameState.isHidingInToilet) {
         statusText = 'Hiding in toilet...';
+    } else if (gameState.dad.carrying === 'BABY') {
+        statusText = 'Carrying baby...';
     } else if (gameState.dad.carrying === 'MOWER') {
         statusText = 'Mowing lawn...';
     }
@@ -6150,6 +6555,8 @@ function getPrimaryInteractionState(nearbyTask = findNearbyTask(), nearbyDoor = 
     const toiletSpot = checkToiletHiding(gameState.dad.x, gameState.dad.y);
     const mowerSpot = checkMower(gameState.dad.x, gameState.dad.y);
     const nearCoffee = checkCoffeeMachine(gameState.dad.x, gameState.dad.y);
+    const nearbyBaby = checkNearbyBaby(gameState.dad.x, gameState.dad.y);
+    const babyCotSpot = checkBabyCotSpot(gameState.dad.x, gameState.dad.y);
 
     if (gameState.isRelaxing) {
         return {
@@ -6174,6 +6581,58 @@ function getPrimaryInteractionState(nearbyTask = findNearbyTask(), nearbyDoor = 
             y: dadCenterY,
             radius: 52,
             theme: getWorldMarkerTheme('deposit')
+        };
+    }
+
+    if (gameState.dad.carrying === 'BABY' && babyCotSpot && babyCotSpot.canNap) {
+        return {
+            kind: 'baby_nap',
+            action: 'PRESS E',
+            title: 'Put baby down for nap',
+            detail: `${Math.max(0, Math.ceil(BABY_NAP_END - gameState.time))}s left in nap window`,
+            x: babyCotSpot.x,
+            y: babyCotSpot.y,
+            radius: 62,
+            theme: getWorldMarkerTheme('hold')
+        };
+    }
+
+    if (gameState.dad.carrying === 'BABY') {
+        return {
+            kind: 'baby_set_down',
+            action: 'PRESS E',
+            title: 'Set baby down',
+            detail: 'Put him back on the floor.',
+            x: dadCenterX,
+            y: dadCenterY,
+            radius: 54,
+            theme: getWorldMarkerTheme('deposit')
+        };
+    }
+
+    if (nearbyBaby) {
+        return {
+            kind: 'baby_pickup',
+            action: 'PRESS E',
+            title: 'Pick up baby',
+            detail: isBabyNapWindowOpen() ? 'Nap window is open.' : 'Carry him to another spot.',
+            x: nearbyBaby.x,
+            y: nearbyBaby.y,
+            radius: nearbyBaby.radius,
+            theme: getWorldMarkerTheme('hold')
+        };
+    }
+
+    if (babyCotSpot && babyCotSpot.canWake) {
+        return {
+            kind: 'baby_wake',
+            action: 'PRESS E',
+            title: babyCotSpot.asleep ? 'Wake baby' : 'Pick up baby',
+            detail: babyCotSpot.asleep ? 'End the nap early.' : 'Lift him out of the cot.',
+            x: babyCotSpot.x,
+            y: babyCotSpot.y,
+            radius: babyCotSpot.radius,
+            theme: getWorldMarkerTheme('hold')
         };
     }
 
@@ -6447,6 +6906,38 @@ function checkCoffeeMachine(x, y) {
     
     const dist = Math.hypot(coffeeCenterX - dadCenterX, coffeeCenterY - dadCenterY);
     return dist < INTERACT_DIST;
+}
+
+function checkNearbyBaby(x, y) {
+    const baby = gameState.npcStates.baby;
+    if (!baby || baby.carriedBy || isBabyAtCot()) return null;
+    if (gameState.dad.carrying) return null;
+
+    const dadCenterX = x + gameState.dad.width / 2;
+    const dadCenterY = y + gameState.dad.height / 2;
+    const dist = Math.hypot(baby.x - dadCenterX, baby.y - dadCenterY);
+    if (dist >= 72) return null;
+
+    return { x: baby.x, y: baby.y, radius: 72 };
+}
+
+function checkBabyCotSpot(x, y) {
+    if (!WORLD_OBJECTS.BABY_COT_OBJECT) return null;
+
+    const cot = getBabyCotCenter();
+    const dadCenterX = x + gameState.dad.width / 2;
+    const dadCenterY = y + gameState.dad.height / 2;
+    const dist = Math.hypot(cot.x - dadCenterX, cot.y - dadCenterY);
+    if (dist >= 78) return null;
+
+    return {
+        x: cot.x,
+        y: cot.y,
+        radius: 78,
+        asleep: gameState.babyNap.asleepInCot,
+        canWake: isBabyAtCot(),
+        canNap: gameState.dad.carrying === 'BABY' && isBabyNapWindowOpen()
+    };
 }
 
 function drawPlaytestOverlay() {

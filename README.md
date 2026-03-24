@@ -119,6 +119,7 @@ These are timed anchors in the day.
 Currently implemented or represented in the live game:
 
 - Dishes / sink chores
+- Timed dog feeding at the bowls
 - Sprinkler timing events
 - Beer time
 - Chicken curfew and chicken panic pressure
@@ -126,7 +127,6 @@ Currently implemented or represented in the live game:
 
 Still part of the design target:
 
-- Stronger scheduled dog-feeding rhythm
 - More explicit recurring household beats that make each day feel structured
 
 ### 3. Routine interactables
@@ -313,19 +313,20 @@ Still-valid design target:
 - Core movement, sprint, doors, collision, and waypoint navigation
 - Task system with fetch, hold, and coverage-style work
 - Relax spots, toilet hiding, coffee, beer, mower
+- Baby cot nap loop with wake and wife retrieval
+- Timed dog-feeding cadence
 - Wife, Jake, baby, dogs, chickens, aggressive chickens, Munty
 - Timed events for sprinkler, beer, and chicken curfew
+- Expanded room-specific chore coverage across nursery, office, spare room, and ensuite
 - Dialogue bubbles, world labels, in-world prompts, HUD, and mobile touch controls
 - Built-in autoplay panel with event log and telemetry export
 - External direct player bot with JSON reports
 
 ### Partial but still intended
 
-- Full baby cot nap loop, including stronger retrieval and wake timing
-- Stronger recurring dog-feeding cadence
 - Munty's full sabotage toolkit
 - End-of-day summary / stronger run-end presentation
-- Additional room-specific chores and activities
+- More room-specific chores and activities
 
 ### Explicitly out of scope for the current project
 
@@ -389,4 +390,3 @@ Removed as redundant or stale once this README was updated:
 - old implementation checklists
 - session progress notes
 - patch-note summaries that no longer matched the live game
-
