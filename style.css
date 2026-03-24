@@ -5,8 +5,9 @@
 }
 
 :root {
-    --bg-deep: #071019;
-    --bg-mid: #132130;
+    --bg-deep: #061018;
+    --bg-mid: #162537;
+    --bg-hot: #28131a;
     --panel-deep: rgba(10, 17, 26, 0.84);
     --panel-soft: rgba(18, 29, 42, 0.7);
     --panel-line: rgba(140, 205, 255, 0.26);
@@ -18,10 +19,28 @@
     --accent-gold: #ffd16f;
     --accent-rose: #ff8d84;
     --accent-lime: #93ef9c;
+    --accent-coral: #ff6d76;
     --shadow-deep: rgba(2, 5, 8, 0.45);
     --font-sans: "Trebuchet MS", "Segoe UI", sans-serif;
     --font-display: Impact, Haettenschweiler, "Arial Narrow Bold", sans-serif;
     --font-mono: Consolas, "Lucida Console", monospace;
+}
+
+@keyframes driftGlow {
+    0% { transform: translate3d(0, 0, 0) scale(1); opacity: 0.62; }
+    50% { transform: translate3d(3%, -2%, 0) scale(1.06); opacity: 0.9; }
+    100% { transform: translate3d(-2%, 2%, 0) scale(1.02); opacity: 0.7; }
+}
+
+@keyframes scanDrift {
+    0% { transform: translateY(-3%); opacity: 0.18; }
+    50% { transform: translateY(3%); opacity: 0.28; }
+    100% { transform: translateY(-2%); opacity: 0.18; }
+}
+
+@keyframes badgePulse {
+    0%, 100% { box-shadow: 0 0 0 rgba(255, 209, 111, 0); }
+    50% { box-shadow: 0 0 24px rgba(255, 209, 111, 0.16); }
 }
 
 html,
@@ -36,9 +55,10 @@ body {
     color: var(--ink);
     font-family: var(--font-sans);
     background:
-        radial-gradient(circle at top, rgba(77, 151, 209, 0.18), transparent 34%),
-        radial-gradient(circle at 18% 22%, rgba(255, 209, 111, 0.12), transparent 30%),
-        linear-gradient(160deg, #061018 0%, #0d1722 42%, #172637 100%);
+        radial-gradient(circle at top, rgba(77, 151, 209, 0.24), transparent 34%),
+        radial-gradient(circle at 18% 22%, rgba(255, 209, 111, 0.18), transparent 26%),
+        radial-gradient(circle at 82% 12%, rgba(255, 109, 118, 0.14), transparent 22%),
+        linear-gradient(155deg, #061018 0%, #0d1722 36%, #172637 68%, #22131d 100%);
 }
 
 body::before,
@@ -51,8 +71,8 @@ body::after {
 
 body::before {
     background:
-        radial-gradient(circle at 80% 18%, rgba(134, 212, 255, 0.14), transparent 20%),
-        radial-gradient(circle at 24% 76%, rgba(255, 141, 132, 0.1), transparent 24%);
+        radial-gradient(circle at 80% 18%, rgba(134, 212, 255, 0.17), transparent 20%),
+        radial-gradient(circle at 24% 76%, rgba(255, 141, 132, 0.12), transparent 24%);
     opacity: 0.95;
 }
 
@@ -90,15 +110,93 @@ body::after {
     pointer-events: none;
 }
 
+#game-container::after {
+    content: '';
+    position: absolute;
+    inset: 3vh 7vw;
+    border-radius: 40px;
+    border: 1px solid rgba(255, 255, 255, 0.05);
+    box-shadow:
+        0 0 0 1px rgba(255, 255, 255, 0.02),
+        inset 0 0 120px rgba(255, 255, 255, 0.02);
+    pointer-events: none;
+}
+
+#stage-atmosphere {
+    position: absolute;
+    inset: 0;
+    z-index: 0;
+    pointer-events: none;
+    overflow: hidden;
+}
+
+.ambient-orb,
+.ambient-scan {
+    position: absolute;
+    pointer-events: none;
+}
+
+.ambient-orb {
+    border-radius: 999px;
+    filter: blur(18px);
+    opacity: 0.7;
+    animation: driftGlow 16s ease-in-out infinite;
+}
+
+.orb-sky {
+    top: 8%;
+    left: 12%;
+    width: 30vw;
+    height: 30vw;
+    min-width: 260px;
+    min-height: 260px;
+    background: radial-gradient(circle, rgba(103, 194, 255, 0.24), rgba(103, 194, 255, 0.02) 65%, transparent 76%);
+}
+
+.orb-gold {
+    right: 14%;
+    bottom: 10%;
+    width: 24vw;
+    height: 24vw;
+    min-width: 220px;
+    min-height: 220px;
+    background: radial-gradient(circle, rgba(255, 209, 111, 0.18), rgba(255, 209, 111, 0.02) 60%, transparent 74%);
+    animation-duration: 18s;
+    animation-delay: -5s;
+}
+
+.orb-rose {
+    top: 14%;
+    right: 10%;
+    width: 18vw;
+    height: 18vw;
+    min-width: 170px;
+    min-height: 170px;
+    background: radial-gradient(circle, rgba(255, 109, 118, 0.2), rgba(255, 109, 118, 0.02) 60%, transparent 76%);
+    animation-duration: 14s;
+    animation-delay: -2s;
+}
+
+.ambient-scan {
+    inset: 0;
+    background:
+        linear-gradient(180deg, rgba(255, 255, 255, 0.03), transparent 18%, transparent 82%, rgba(255, 255, 255, 0.03)),
+        repeating-linear-gradient(180deg, rgba(255, 255, 255, 0.012) 0 2px, transparent 2px 9px);
+    mix-blend-mode: screen;
+    opacity: 0.22;
+    animation: scanDrift 12s ease-in-out infinite;
+}
+
 canvas {
     display: block;
     position: relative;
     z-index: 1;
     background: #04070a;
     border-radius: 22px;
-    border: 1px solid rgba(173, 223, 255, 0.22);
+    border: 1px solid rgba(173, 223, 255, 0.24);
     box-shadow:
-        0 34px 90px rgba(0, 0, 0, 0.52),
+        0 38px 120px rgba(0, 0, 0, 0.56),
+        0 0 46px rgba(134, 212, 255, 0.08),
         0 0 0 1px rgba(255, 255, 255, 0.03),
         inset 0 1px 0 rgba(255, 255, 255, 0.04);
     touch-action: none;
@@ -109,16 +207,30 @@ canvas {
     top: 24px;
     left: 24px;
     z-index: 18;
-    max-width: 360px;
-    padding: 14px 18px 16px;
-    border-radius: 22px;
-    background: linear-gradient(145deg, rgba(8, 13, 19, 0.82), rgba(17, 29, 41, 0.58));
+    max-width: 420px;
+    padding: 16px 18px 18px;
+    border-radius: 24px;
+    background:
+        linear-gradient(140deg, rgba(255, 209, 111, 0.1), transparent 30%),
+        linear-gradient(145deg, rgba(8, 13, 19, 0.88), rgba(17, 29, 41, 0.62));
     border: 1px solid rgba(174, 224, 255, 0.18);
     box-shadow:
         0 22px 42px rgba(0, 0, 0, 0.28),
+        0 0 24px rgba(134, 212, 255, 0.08),
         inset 0 1px 0 rgba(255, 255, 255, 0.05);
     backdrop-filter: blur(12px);
     pointer-events: none;
+    transform: rotate(-1deg);
+}
+
+#game-brand::after {
+    content: '';
+    position: absolute;
+    left: 18px;
+    right: 18px;
+    bottom: 10px;
+    height: 1px;
+    background: linear-gradient(90deg, rgba(255, 255, 255, 0.04), rgba(134, 212, 255, 0.28), rgba(255, 255, 255, 0.04));
 }
 
 .brand-kicker {
@@ -131,11 +243,14 @@ canvas {
 
 .brand-title {
     margin-top: 6px;
-    color: var(--ink);
+    color: transparent;
     font-family: var(--font-display);
-    font-size: clamp(30px, 5vw, 54px);
+    font-size: clamp(28px, 4.2vw, 48px);
     line-height: 0.88;
-    letter-spacing: 0.08em;
+    letter-spacing: 0.05em;
+    background: linear-gradient(180deg, #ffffff 0%, #cbe9ff 45%, #ffd5c8 100%);
+    background-clip: text;
+    -webkit-background-clip: text;
     text-shadow: 0 8px 18px rgba(0, 0, 0, 0.38);
 }
 
@@ -145,6 +260,33 @@ canvas {
     font-family: var(--font-mono);
     font-size: 11px;
     line-height: 1.4;
+}
+
+.brand-badges {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-top: 12px;
+}
+
+.brand-chip {
+    padding: 6px 10px;
+    border-radius: 999px;
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    background: linear-gradient(180deg, rgba(255, 255, 255, 0.08), rgba(255, 255, 255, 0.03));
+    color: #eff6fd;
+    font-family: var(--font-mono);
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    animation: badgePulse 6s ease-in-out infinite;
+}
+
+.brand-chip:last-child {
+    border-color: rgba(255, 109, 118, 0.26);
+    color: #ffe0e4;
+    background: linear-gradient(180deg, rgba(255, 109, 118, 0.12), rgba(255, 109, 118, 0.04));
 }
 
 #touch-controls {
@@ -166,7 +308,9 @@ canvas {
     gap: 10px;
     padding: 12px;
     border-radius: 20px;
-    background: linear-gradient(160deg, rgba(7, 12, 18, 0.78), rgba(19, 30, 43, 0.58));
+    background:
+        linear-gradient(150deg, rgba(255, 255, 255, 0.05), transparent 40%),
+        linear-gradient(160deg, rgba(7, 12, 18, 0.82), rgba(19, 30, 43, 0.62));
     border: 1px solid rgba(173, 223, 255, 0.18);
     box-shadow: 0 18px 32px rgba(0, 0, 0, 0.24);
     backdrop-filter: blur(10px);
@@ -184,19 +328,23 @@ canvas {
     padding: 10px 14px;
     border: 1px solid rgba(173, 223, 255, 0.24);
     border-radius: 16px;
-    background: linear-gradient(180deg, rgba(29, 44, 59, 0.92), rgba(12, 19, 27, 0.94));
+    background:
+        linear-gradient(180deg, rgba(255, 255, 255, 0.06), rgba(255, 255, 255, 0) 34%),
+        linear-gradient(180deg, rgba(29, 44, 59, 0.94), rgba(12, 19, 27, 0.96));
     color: var(--ink);
     font-family: var(--font-mono);
     font-size: 12px;
     font-weight: 700;
     letter-spacing: 0.08em;
     box-shadow:
-        inset 0 1px 0 rgba(255, 255, 255, 0.05),
+        inset 0 1px 0 rgba(255, 255, 255, 0.07),
         0 10px 18px rgba(0, 0, 0, 0.24);
 }
 
 .touch-action.primary {
-    background: linear-gradient(180deg, rgba(255, 209, 111, 0.95), rgba(219, 151, 66, 0.95));
+    background:
+        linear-gradient(180deg, rgba(255, 255, 255, 0.18), rgba(255, 255, 255, 0) 34%),
+        linear-gradient(180deg, rgba(255, 209, 111, 0.95), rgba(219, 151, 66, 0.95));
     border-color: rgba(255, 223, 150, 0.92);
     color: #1a1307;
 }
@@ -204,7 +352,9 @@ canvas {
 .touch-btn:active,
 .touch-btn.active {
     transform: translateY(1px) scale(0.97);
-    background: linear-gradient(180deg, rgba(76, 161, 214, 0.95), rgba(31, 95, 145, 0.95));
+    background:
+        linear-gradient(180deg, rgba(255, 255, 255, 0.14), rgba(255, 255, 255, 0) 40%),
+        linear-gradient(180deg, rgba(76, 161, 214, 0.95), rgba(31, 95, 145, 0.95));
     border-color: rgba(160, 223, 255, 0.95);
 }
 
@@ -220,13 +370,28 @@ canvas {
     gap: 10px;
     padding: 14px;
     color: var(--ink);
-    background: linear-gradient(155deg, rgba(8, 13, 19, 0.88), rgba(18, 30, 42, 0.72));
+    background:
+        linear-gradient(145deg, rgba(255, 209, 111, 0.08), transparent 26%),
+        linear-gradient(155deg, rgba(8, 13, 19, 0.9), rgba(18, 30, 42, 0.76));
     border: 1px solid rgba(140, 205, 255, 0.28);
     border-radius: 24px;
     box-shadow:
         0 28px 58px rgba(0, 0, 0, 0.36),
+        0 0 26px rgba(134, 212, 255, 0.08),
         inset 0 1px 0 rgba(255, 255, 255, 0.06);
     backdrop-filter: blur(12px);
+}
+
+#playtest-panel::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 18px;
+    right: 18px;
+    height: 3px;
+    border-radius: 999px;
+    background: linear-gradient(90deg, var(--accent-sky), var(--accent-gold), var(--accent-rose));
+    opacity: 0.72;
 }
 
 #playtest-panel[data-mode="online"] {
@@ -303,6 +468,7 @@ canvas {
     background:
         linear-gradient(180deg, rgba(255, 255, 255, 0.04), rgba(255, 255, 255, 0.02)),
         rgba(255, 255, 255, 0.02);
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.03);
     color: var(--ink-soft);
     font-family: var(--font-mono);
     font-size: 10px;
@@ -335,7 +501,9 @@ canvas {
     padding: 0 12px;
     border: 1px solid rgba(171, 222, 255, 0.2);
     border-radius: 14px;
-    background: linear-gradient(180deg, rgba(35, 51, 68, 0.95), rgba(15, 23, 32, 0.95));
+    background:
+        linear-gradient(180deg, rgba(255, 255, 255, 0.08), rgba(255, 255, 255, 0) 36%),
+        linear-gradient(180deg, rgba(35, 51, 68, 0.95), rgba(15, 23, 32, 0.95));
     color: var(--ink);
     font-family: var(--font-mono);
     font-size: 11px;
@@ -372,7 +540,9 @@ canvas {
     align-items: center;
     justify-content: center;
     padding: 24px;
-    background: rgba(3, 8, 12, 0.78);
+    background:
+        radial-gradient(circle at 50% 20%, rgba(134, 212, 255, 0.12), transparent 26%),
+        rgba(3, 8, 12, 0.8);
     backdrop-filter: blur(10px);
 }
 
@@ -380,10 +550,13 @@ canvas {
     width: min(540px, 100%);
     padding: 28px;
     border-radius: 28px;
-    background: linear-gradient(155deg, rgba(10, 16, 23, 0.96), rgba(21, 33, 45, 0.92));
+    background:
+        radial-gradient(circle at top, rgba(255, 209, 111, 0.12), transparent 28%),
+        linear-gradient(155deg, rgba(10, 16, 23, 0.96), rgba(21, 33, 45, 0.92));
     border: 1px solid rgba(255, 141, 132, 0.32);
     box-shadow:
         0 30px 70px rgba(0, 0, 0, 0.4),
+        0 0 34px rgba(255, 141, 132, 0.08),
         inset 0 1px 0 rgba(255, 255, 255, 0.04);
     text-align: center;
 }
@@ -404,6 +577,7 @@ canvas {
     font-size: clamp(28px, 5vw, 44px);
     letter-spacing: 0.06em;
     line-height: 0.95;
+    text-shadow: 0 10px 24px rgba(0, 0, 0, 0.34);
 }
 
 #modal-text {
@@ -449,12 +623,12 @@ canvas {
     #game-brand {
         top: 12px;
         left: 12px;
-        max-width: 270px;
+        max-width: 320px;
         padding: 12px 14px 14px;
     }
 
     .brand-title {
-        font-size: 30px;
+        font-size: 28px;
     }
 
     .brand-meta {
@@ -511,21 +685,31 @@ canvas {
 
 @media (max-width: 900px) {
     #game-brand {
-        max-width: 224px;
+        max-width: 244px;
     }
 
     .brand-title {
-        font-size: 26px;
+        font-size: 24px;
     }
 
     .brand-meta {
         display: none;
     }
+
+    .brand-badges {
+        margin-top: 8px;
+        gap: 6px;
+    }
+
+    .brand-chip {
+        padding: 5px 8px;
+        font-size: 8px;
+    }
 }
 
 @media (max-width: 640px), (max-height: 760px) {
     #game-brand {
-        max-width: 186px;
+        max-width: 176px;
         padding: 9px 11px 11px;
         border-radius: 16px;
     }
@@ -536,7 +720,11 @@ canvas {
     }
 
     .brand-title {
-        font-size: 22px;
+        font-size: 19px;
+    }
+
+    .brand-badges {
+        display: none;
     }
 
     #touch-controls {
@@ -572,7 +760,7 @@ canvas {
     }
 
     #playtest-panel.is-collapsed {
-        width: 154px;
+        width: 138px;
     }
 
     #playtest-title {
@@ -611,14 +799,17 @@ canvas {
     }
 
     #playtest-panel.is-collapsed #playtest-summary {
-        min-height: 36px;
-        padding: 6px;
+        display: none;
     }
 
     #playtest-panel.is-collapsed .playtest-btn {
         min-height: 24px;
         font-size: 8px;
         padding: 0 6px;
+    }
+
+    #playtest-panel.is-collapsed #playtest-actions {
+        grid-template-columns: 1fr;
     }
 
     #modal-content {

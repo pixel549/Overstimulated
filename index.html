@@ -9,10 +9,21 @@
 </head>
 <body>
     <div id="game-container">
+        <div id="stage-atmosphere" aria-hidden="true">
+            <div class="ambient-orb orb-sky"></div>
+            <div class="ambient-orb orb-gold"></div>
+            <div class="ambient-orb orb-rose"></div>
+            <div class="ambient-scan"></div>
+        </div>
+
         <div id="game-brand" aria-hidden="true">
             <div class="brand-kicker">Domestic Pressure Sim</div>
             <div class="brand-title">OVERSTIMULATED</div>
             <div class="brand-meta">WASD move | E act / hold | Q bark | R talk</div>
+            <div class="brand-badges">
+                <span class="brand-chip">DAY 1 MATTERS</span>
+                <span class="brand-chip">DAY 2: MUNTY</span>
+            </div>
         </div>
 
         <canvas id="gameCanvas"></canvas>

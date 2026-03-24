@@ -560,6 +560,41 @@ function createInitialBabyNapState() {
     };
 }
 
+function createInitialRunStats() {
+    return {
+        tasksCompleted: 0,
+        peakStimulation: 0,
+        daysCompleted: 0,
+        barksUsed: 0,
+        coffeeBrews: 0,
+        relaxSessions: 0,
+        toiletHides: 0,
+        babyNapsCompleted: 0,
+        dogFeedsCompleted: 0,
+        muntySabotages: 0,
+        muntyMesses: 0,
+        muntyHijacks: 0,
+        muntyWakeups: 0,
+        muntyAdultDisruptions: 0,
+        muntyContainmentBursts: 0
+    };
+}
+
+function createInitialMuntyChaosState() {
+    return {
+        shoveTimer: 0,
+        shoveX: 0,
+        shoveY: 0,
+        actionJamTimer: 0,
+        controlCooldown: 2.5,
+        adultCooldown: 1.5,
+        babyCooldown: 1.5,
+        messCooldown: 9.0,
+        containmentTimer: 0,
+        containmentBurstCooldown: 0
+    };
+}
+
 function createInitialNPCStates() {
     return {
         wife: { x: (ROOMS.KITCHEN.x + 2) * TILE_SIZE, y: (ROOMS.KITCHEN.y + 2) * TILE_SIZE, targetRoom: 'KITCHEN', moveSpeed: 37.5, canUseDoors: true, doorInteraction: null, currentPath: [], pathRecalcTimer: 0 },
@@ -603,11 +638,7 @@ let gameState = {
     selectedTaskId: null,
     lastEventTick: 0,
     eventTickInterval: STARTING_EVENT_TICK_INTERVAL,
-    stats: {
-        tasksCompleted: 0,
-        peakStimulation: 0,
-        daysCompleted: 0
-    },
+    stats: createInitialRunStats(),
     sprintergyLeft: 100,
     maxSprintEnergy: 100,
     barkCooldown: 0,
@@ -639,6 +670,7 @@ let gameState = {
     cameraScale: 1.0,
     cameraOffsetX: 0,
     cameraOffsetY: 0,
+    muntyChaos: createInitialMuntyChaosState(),
     sprinkler: { x: POIS.SPRINKLER.x * TILE_SIZE, y: POIS.SPRINKLER.y * TILE_SIZE },
     timeline: {
         nextSprinklerIndex: 0,
@@ -734,11 +766,7 @@ function initGame() {
     gameState.selectedTaskId = null;
     gameState.lastEventTick = 0;
     gameState.eventTickInterval = STARTING_EVENT_TICK_INTERVAL;
-    gameState.stats = {
-        tasksCompleted: 0,
-        peakStimulation: 0,
-        daysCompleted: 0
-    };
+    gameState.stats = createInitialRunStats();
     gameState.tasks = [];
     gameState.entities = [];
     gameState.audioRings = [];
@@ -757,6 +785,7 @@ function initGame() {
     gameState.cameraScale = 1.0;
     gameState.cameraOffsetX = 0;
     gameState.cameraOffsetY = 0;
+    gameState.muntyChaos = createInitialMuntyChaosState();
     gameState.directPlayerIntentDoorName = null;
     gameState.notification = null;
     gameState.dad.x = (ROOMS.LIVING_ROOM.x + 5) * TILE_SIZE;
@@ -857,6 +886,7 @@ function resetDayFlags() {
     }
     gameState.sprinkler.x = POIS.SPRINKLER.x * TILE_SIZE;
     gameState.sprinkler.y = POIS.SPRINKLER.y * TILE_SIZE;
+    gameState.muntyChaos = createInitialMuntyChaosState();
     gameState.timeline = {
         nextSprinklerIndex: 0,
         nextDogFeedIndex: 0,
@@ -1077,6 +1107,23 @@ function getPlaytestDebugSnapshot() {
                 ? Number(Math.max(0, gameState.time - gameState.timeline.activeDogFeedTrigger).toFixed(1))
                 : 0
         },
+        munty: gameState.npcStates.munty ? {
+            distance: Number(Math.hypot(gameState.npcStates.munty.x - dadCenterX, gameState.npcStates.munty.y - dadCenterY).toFixed(1)),
+            room: (() => {
+                const key = getRoomAt(gameState.npcStates.munty.x, gameState.npcStates.munty.y);
+                return key && ROOMS[key] ? ROOMS[key].name : 'Unknown';
+            })(),
+            actionJam: Number(gameState.muntyChaos.actionJamTimer.toFixed(2)),
+            shoveTimer: Number(gameState.muntyChaos.shoveTimer.toFixed(2)),
+            incidents: gameState.stats.muntySabotages
+        } : null,
+        stats: {
+            barksUsed: gameState.stats.barksUsed,
+            coffeeBrews: gameState.stats.coffeeBrews,
+            babyNapsCompleted: gameState.stats.babyNapsCompleted,
+            dogFeedsCompleted: gameState.stats.dogFeedsCompleted,
+            muntySabotages: gameState.stats.muntySabotages
+        },
         recovery: playtestBot.recoveryTimer > 0 && playtestBot.recoveryTarget ? {
             timeLeft: Number(playtestBot.recoveryTimer.toFixed(2)),
             x: Math.round(playtestBot.recoveryTarget.x),
@@ -1089,7 +1136,7 @@ function getPlaytestDebugSnapshot() {
 function buildPlaytestExportPayload() {
     const payload = {
         exportedAt: new Date().toISOString(),
-        version: 'playtest-bot-v1',
+        version: 'playtest-bot-v2',
         sessionStartedAt: playtestBot.telemetry.sessionStartedAt,
         active: playtestBot.active,
         timeScale: playtestBot.timeScale,
@@ -1157,6 +1204,20 @@ function formatPlaytestEvent(event) {
             return `${stamp} dogs need feeding`;
         case 'dog_feed_completed':
             return `${stamp} dogs fed`;
+        case 'munty_spawned':
+            return `${stamp} munty loose`;
+        case 'munty_control_jolt':
+            return `${stamp} munty clipped dad${event.carrying ? ` (${event.carrying})` : ''}`;
+        case 'munty_anti_calm':
+            return `${stamp} munty ruined a calm-down`;
+        case 'munty_adult_disruption':
+            return `${stamp} munty set off ${event.target}`;
+        case 'munty_baby_wakeup':
+            return `${stamp} munty upset the baby`;
+        case 'munty_mess':
+            return `${stamp} munty mess: ${event.itemType} @ ${event.room}`;
+        case 'munty_containment_whine':
+            return `${stamp} munty breakout${event.door ? ` via ${event.door}` : ''}`;
         case 'day_completed':
             return `${stamp} day clear`;
         case 'run_started':
@@ -1181,6 +1242,9 @@ function updatePlaytestUI() {
         lines.push(`Day ${gameState.day} @ ${Math.floor(gameState.time)}s`);
         lines.push(`Stress ${Math.floor(gameState.overstimulation)}% | Tasks ${gameState.tasks.length}`);
         lines.push(`Objective: ${objectiveLabel}`);
+        if (gameState.npcStates.munty) {
+            lines.push(`Munty ${gameState.stats.muntySabotages} | Mess ${gameState.stats.muntyMesses}`);
+        }
     }
 
     if (playtestBot.currentRun) {
@@ -1225,6 +1289,12 @@ function updatePlaytestUI() {
                 ? `Dog feed overdue ${snapshot.dogFeed.overdue}s`
                 : `Dog feed @ ${snapshot.dogFeed.nextAt ?? '-' }s`);
         }
+        if (snapshot.munty) {
+            detailLines.push(`Munty ${snapshot.munty.distance}px | jam ${snapshot.munty.actionJam}s`);
+            detailLines.push(`Munty room ${snapshot.munty.room} | incidents ${snapshot.munty.incidents}`);
+        }
+        detailLines.push(`Barks ${snapshot.stats.barksUsed} | Coffee ${snapshot.stats.coffeeBrews}`);
+        detailLines.push(`Nap ${snapshot.stats.babyNapsCompleted} | Dogs ${snapshot.stats.dogFeedsCompleted}`);
         detailLines.push(snapshot.nearbyTask
             ? `Task ${snapshot.nearbyTask.name} ${snapshot.nearbyTask.progress}/${snapshot.nearbyTask.maxProgress}`
             : 'Task none nearby');
@@ -1319,6 +1389,16 @@ function finishPlaytestRun(result, extra = {}) {
             tasksCompleted: gameState.stats.tasksCompleted,
             peakStimulation: Math.floor(gameState.stats.peakStimulation),
             daysCompleted: gameState.stats.daysCompleted,
+            barksUsedTotal: gameState.stats.barksUsed,
+            coffeeBrews: gameState.stats.coffeeBrews,
+            relaxSessions: gameState.stats.relaxSessions,
+            toiletHides: gameState.stats.toiletHides,
+            babyNapsCompleted: gameState.stats.babyNapsCompleted,
+            dogFeedsCompleted: gameState.stats.dogFeedsCompleted,
+            muntySabotages: gameState.stats.muntySabotages,
+            muntyMesses: gameState.stats.muntyMesses,
+            muntyHijacks: gameState.stats.muntyHijacks,
+            muntyWakeups: gameState.stats.muntyWakeups,
             remainingTasks: gameState.tasks.map(task => task.name),
             stuckCount: playtestBot.currentRun.stuckCount,
             doorsToggled: playtestBot.currentRun.doorsToggled,
@@ -1485,7 +1565,18 @@ function getDirectPlayerSnapshot() {
         stats: {
             tasksCompleted: gameState.stats.tasksCompleted,
             peakStimulation: Number(gameState.stats.peakStimulation.toFixed(2)),
-            daysCompleted: gameState.stats.daysCompleted
+            daysCompleted: gameState.stats.daysCompleted,
+            barksUsed: gameState.stats.barksUsed,
+            coffeeBrews: gameState.stats.coffeeBrews,
+            relaxSessions: gameState.stats.relaxSessions,
+            toiletHides: gameState.stats.toiletHides,
+            babyNapsCompleted: gameState.stats.babyNapsCompleted,
+            dogFeedsCompleted: gameState.stats.dogFeedsCompleted,
+            muntySabotages: gameState.stats.muntySabotages,
+            muntyMesses: gameState.stats.muntyMesses,
+            muntyHijacks: gameState.stats.muntyHijacks,
+            muntyWakeups: gameState.stats.muntyWakeups,
+            muntyAdultDisruptions: gameState.stats.muntyAdultDisruptions
         },
         dad: {
             x: Math.round(gameState.dad.x),
@@ -1524,6 +1615,14 @@ function getDirectPlayerSnapshot() {
             overtired: !!gameState.babyNap.overtired,
             napTimer: Number(gameState.babyNap.sleepTimer.toFixed(2))
         },
+        munty: gameState.npcStates.munty ? {
+            x: Math.round(gameState.npcStates.munty.x),
+            y: Math.round(gameState.npcStates.munty.y),
+            roomKey: getRoomAt(gameState.npcStates.munty.x, gameState.npcStates.munty.y),
+            distance: Math.round(Math.hypot(gameState.npcStates.munty.x - dadCenterX, gameState.npcStates.munty.y - dadCenterY)),
+            actionJamTimer: Number(gameState.muntyChaos.actionJamTimer.toFixed(2)),
+            shoveTimer: Number(gameState.muntyChaos.shoveTimer.toFixed(2))
+        } : null,
         dogFeed: {
             active: isDogFeedEventActive(),
             nextAt: DOG_FEED_SCHEDULE[gameState.timeline.nextDogFeedIndex] ?? null,
@@ -2433,6 +2532,7 @@ function startBabyNap() {
     gameState.babyNap.sleepTimer = napDuration;
     gameState.babyNap.missedWindow = false;
     gameState.babyNap.overtired = false;
+    gameState.stats.babyNapsCompleted++;
     positionBabyAtCot();
     clearOutstandingBabyTasks();
     gameState.overstimulation = Math.max(0, gameState.overstimulation - 6);
@@ -2599,6 +2699,8 @@ function update(deltaTime) {
     }
 
     updatePlaytestBot(effectiveDeltaTime);
+    applyMuntyChaos(effectiveDeltaTime);
+    const muntyActionJammed = gameState.muntyChaos.actionJamTimer > 0;
 
     // Dad movement (faster base speed)
     // If relaxing, don't allow movement
@@ -2644,6 +2746,11 @@ function update(deltaTime) {
         if (input.down) newY += moveSpeed;
         if (input.left) newX -= moveSpeed;
         if (input.right) newX += moveSpeed;
+        if (gameState.muntyChaos.shoveTimer > 0) {
+            const shoveSpeed = (gameState.dad.carrying === 'BABY' ? 94 : 76) * effectiveDeltaTime;
+            newX += gameState.muntyChaos.shoveX * shoveSpeed;
+            newY += gameState.muntyChaos.shoveY * shoveSpeed;
+        }
 
         // Apply collision detection
         if (canMoveTo(newX, gameState.dad.y, gameState.dad.width, gameState.dad.height)) {
@@ -2674,7 +2781,7 @@ function update(deltaTime) {
     }
 
     // Action handling
-    if (input.actionHeld) {
+    if (input.actionHeld && !muntyActionJammed) {
 
         // Coffee brewing
         const nearCoffee = checkCoffeeMachine(gameState.dad.x, gameState.dad.y);
@@ -2684,6 +2791,7 @@ function update(deltaTime) {
                 gameState.coffeeBuff = true;
                 gameState.coffeeBuffTimer = gameState.coffeeBuffDuration;
                 gameState.coffeeProgress = 0;
+                gameState.stats.coffeeBrews++;
                 notifyPlayer("COFFEE READY! +60s STRESS RESISTANCE");
 
                 // Dad celebrates coffee
@@ -2721,74 +2829,80 @@ function update(deltaTime) {
 
     if (input.action) {
         input.action = false;
-        const nearbyDoor = findNearbyDoor();
-        const nearbyTask = findNearbyTask();
-        const relaxSpot = checkRelaxSpot(gameState.dad.x, gameState.dad.y);
-        const toiletSpot = checkToiletHiding(gameState.dad.x, gameState.dad.y);
-        const mowerSpot = checkMower(gameState.dad.x, gameState.dad.y);
-        const nearbyBaby = checkNearbyBaby(gameState.dad.x, gameState.dad.y);
-        const babyCotSpot = checkBabyCotSpot(gameState.dad.x, gameState.dad.y);
-        // Priority order: exiting a special state > tasks > entering a special state > doors
-        if (gameState.isRelaxing) {
-            gameState.isRelaxing = false;
-            gameState.relaxSpot = null;
-        }
-        else if (gameState.isHidingInToilet) {
-            gameState.isHidingInToilet = false;
-        }
-        else if (gameState.dad.carrying === 'BABY' && babyCotSpot && babyCotSpot.canNap) {
-            startBabyNap();
-        }
-        else if (nearbyBaby) {
-            pickUpBaby();
-        }
-        else if (babyCotSpot && babyCotSpot.canWake) {
-            wakeBabyFromNap('manual_pickup');
-            pickUpBaby();
-        }
-        else if (gameState.dad.carrying === 'BABY') {
-            setDownCarriedBaby();
-        }
-        else if (nearbyTask) {
-            if (nearbyTask.type === 'fetch') {
-                completeTask(nearbyTask.id);
-            } else if (nearbyTask.type === 'coverage') {
-                nearbyTask.progress = Math.min(nearbyTask.maxProgress, nearbyTask.progress + 1);
-                if (nearbyTask.name && nearbyTask.name.startsWith('Clean poop')) {
-                    try {
-                        const poop = findNearestEntity(gameState.dad.x, gameState.dad.y, 'poop', 200);
-                        if (poop) removeEntity(poop);
-                    } catch (e) {
-                        console.warn('Error cleaning poop:', e);
+        if (!muntyActionJammed) {
+            const nearbyDoor = findNearbyDoor();
+            const nearbyTask = findNearbyTask();
+            const relaxSpot = checkRelaxSpot(gameState.dad.x, gameState.dad.y);
+            const toiletSpot = checkToiletHiding(gameState.dad.x, gameState.dad.y);
+            const mowerSpot = checkMower(gameState.dad.x, gameState.dad.y);
+            const nearbyBaby = checkNearbyBaby(gameState.dad.x, gameState.dad.y);
+            const babyCotSpot = checkBabyCotSpot(gameState.dad.x, gameState.dad.y);
+            // Priority order: exiting a special state > tasks > entering a special state > doors
+            if (gameState.isRelaxing) {
+                gameState.isRelaxing = false;
+                gameState.relaxSpot = null;
+            }
+            else if (gameState.isHidingInToilet) {
+                gameState.isHidingInToilet = false;
+            }
+            else if (gameState.dad.carrying === 'BABY' && babyCotSpot && babyCotSpot.canNap) {
+                startBabyNap();
+            }
+            else if (nearbyBaby) {
+                pickUpBaby();
+            }
+            else if (babyCotSpot && babyCotSpot.canWake) {
+                wakeBabyFromNap('manual_pickup');
+                pickUpBaby();
+            }
+            else if (gameState.dad.carrying === 'BABY') {
+                setDownCarriedBaby();
+            }
+            else if (nearbyTask) {
+                if (nearbyTask.type === 'fetch') {
+                    completeTask(nearbyTask.id);
+                } else if (nearbyTask.type === 'coverage') {
+                    nearbyTask.progress = Math.min(nearbyTask.maxProgress, nearbyTask.progress + 1);
+                    if (nearbyTask.name && nearbyTask.name.startsWith('Clean poop')) {
+                        try {
+                            const poop = findNearestEntity(gameState.dad.x, gameState.dad.y, 'poop', 200);
+                            if (poop) removeEntity(poop);
+                        } catch (e) {
+                            console.warn('Error cleaning poop:', e);
+                        }
+                    }
+                    if (nearbyTask.progress >= nearbyTask.maxProgress) {
+                        completeTask(nearbyTask.id);
                     }
                 }
-                if (nearbyTask.progress >= nearbyTask.maxProgress) {
-                    completeTask(nearbyTask.id);
-                }
             }
-        }
-        // Relax spot interaction
-        else if (relaxSpot && !gameState.isRelaxing) {
-            gameState.isRelaxing = true;
-            gameState.relaxSpot = relaxSpot.key;
-        }
-        // Toilet hiding
-        else if (toiletSpot && toiletSpot.canHide) {
-            gameState.isHidingInToilet = !gameState.isHidingInToilet;
-        }
-        else if (nearbyDoor) {
-            toggleDoor(nearbyDoor.index);
-        }
-        // Mower pickup/drop
-        else if (mowerSpot) {
-            gameState.dad.carrying = 'MOWER';
-            notifyPlayer('Picked up mower.', 2.0);
-        }
-        else if (gameState.dad.carrying === 'MOWER') {
-            gameState.dad.carrying = null;
-            gameState.mower.x = gameState.dad.x + gameState.dad.width / 2 - gameState.mower.width / 2;
-            gameState.mower.y = gameState.dad.y + gameState.dad.height / 2 - gameState.mower.height / 2;
-            notifyPlayer('Dropped mower.', 2.0);
+            // Relax spot interaction
+            else if (relaxSpot && !gameState.isRelaxing) {
+                gameState.stats.relaxSessions++;
+                gameState.isRelaxing = true;
+                gameState.relaxSpot = relaxSpot.key;
+            }
+            // Toilet hiding
+            else if (toiletSpot && toiletSpot.canHide) {
+                if (!gameState.isHidingInToilet) {
+                    gameState.stats.toiletHides++;
+                }
+                gameState.isHidingInToilet = !gameState.isHidingInToilet;
+            }
+            else if (nearbyDoor) {
+                toggleDoor(nearbyDoor.index);
+            }
+            // Mower pickup/drop
+            else if (mowerSpot) {
+                gameState.dad.carrying = 'MOWER';
+                notifyPlayer('Picked up mower.', 2.0);
+            }
+            else if (gameState.dad.carrying === 'MOWER') {
+                gameState.dad.carrying = null;
+                gameState.mower.x = gameState.dad.x + gameState.dad.width / 2 - gameState.mower.width / 2;
+                gameState.mower.y = gameState.dad.y + gameState.dad.height / 2 - gameState.mower.height / 2;
+                notifyPlayer('Dropped mower.', 2.0);
+            }
         }
     }
 
@@ -2828,7 +2942,7 @@ function update(deltaTime) {
     // --- Overstimulation mechanics ---
     // All stress logic is consolidated in updateStressLogic() to avoid double-counting.
     // Coffee progress reset (must stay here as it depends on input state)
-    if (!input.actionHeld || !checkCoffeeMachine(gameState.dad.x, gameState.dad.y)) {
+    if (muntyActionJammed || !input.actionHeld || !checkCoffeeMachine(gameState.dad.x, gameState.dad.y)) {
         gameState.coffeeProgress = 0;
     }
 
@@ -2860,6 +2974,7 @@ function update(deltaTime) {
     // Bark action (context-sensitive)
     if (input.bark && gameState.barkCooldown <= 0) {
         performBark();
+        gameState.stats.barksUsed++;
         gameState.barkCooldown = gameState.barkCooldownMax;
     }
 
@@ -3734,6 +3849,203 @@ function updateRNGEvents(dt) {
     rngEvents.toySpawn(dt);
 }
 
+function recordMuntyIncident(type, details = {}) {
+    const statKeyByType = {
+        control_jolt: 'muntyHijacks',
+        baby_wakeup: 'muntyWakeups',
+        adult_disruption: 'muntyAdultDisruptions',
+        containment_whine: 'muntyContainmentBursts'
+    };
+    gameState.stats.muntySabotages++;
+    const statKey = statKeyByType[type];
+    if (statKey) {
+        gameState.stats[statKey]++;
+    }
+    recordPlaytestEvent(`munty_${type}`, details);
+}
+
+function findNearestDoorToPoint(x, y, maxDist = Infinity, predicate = null) {
+    let best = null;
+    let bestDist = maxDist;
+    for (let i = 0; i < DOORS.length; i++) {
+        const door = DOORS[i];
+        if (predicate && !predicate(door)) continue;
+        const center = getDoorCenter(door);
+        const dist = Math.hypot(center.x - x, center.y - y);
+        if (dist < bestDist) {
+            bestDist = dist;
+            best = { door, index: i, distance: dist };
+        }
+    }
+    return best;
+}
+
+function spawnMuntyMess(preferredRoom = null) {
+    const munty = gameState.npcStates.munty;
+    if (!munty) return false;
+
+    let roomKey = preferredRoom || getRoomAt(munty.x, munty.y) || 'LIVING_ROOM';
+    if (roomKey === 'DOG_YARD' || roomKey === 'CHICKEN_YARD' || roomKey === 'CHICKEN_RUN' || roomKey === 'CHICKEN_COOP') {
+        roomKey = 'DOG_PATIO';
+    }
+    const isOutdoor = OUTDOOR_ROOM_KEYS.has(roomKey);
+    const clutterType = isOutdoor ? 'poop' : 'toy';
+    const clutterInRoom = gameState.entities.filter(ent => ent.type === clutterType && getRoomAt(ent.x, ent.y) === roomKey).length;
+    const clutterCap = isOutdoor ? 3 : 4;
+    if (clutterInRoom >= clutterCap || !ROOMS[roomKey]) return false;
+
+    const pos = randomPointInRoom(roomKey);
+    gameState.entities.push({ type: clutterType, x: pos.x, y: pos.y });
+    gameState.stats.muntyMesses++;
+    recordMuntyIncident('mess', { room: ROOMS[roomKey].name, itemType: clutterType });
+    notifyPlayer(isOutdoor ? 'Munty left the patio worse.' : 'Munty left a fresh mess behind.', 2.2);
+    return true;
+}
+
+function applyMuntyChaos(deltaTime) {
+    const munty = gameState.npcStates.munty;
+    const chaos = gameState.muntyChaos;
+    if (!chaos) return;
+
+    chaos.shoveTimer = Math.max(0, chaos.shoveTimer - deltaTime);
+    chaos.actionJamTimer = Math.max(0, chaos.actionJamTimer - deltaTime);
+    chaos.controlCooldown = Math.max(0, chaos.controlCooldown - deltaTime);
+    chaos.adultCooldown = Math.max(0, chaos.adultCooldown - deltaTime);
+    chaos.babyCooldown = Math.max(0, chaos.babyCooldown - deltaTime);
+    chaos.messCooldown = Math.max(0, chaos.messCooldown - deltaTime);
+    chaos.containmentBurstCooldown = Math.max(0, chaos.containmentBurstCooldown - deltaTime);
+
+    if (!munty || gameState.day < 2) {
+        return;
+    }
+
+    const dadCenterX = gameState.dad.x + gameState.dad.width / 2;
+    const dadCenterY = gameState.dad.y + gameState.dad.height / 2;
+    const dadDist = Math.hypot(munty.x - dadCenterX, munty.y - dadCenterY);
+
+    if (dadDist < 140 && (gameState.isRelaxing || gameState.isHidingInToilet) && chaos.actionJamTimer <= 0.1) {
+        const interrupted = gameState.isRelaxing ? 'relaxing' : 'hiding';
+        gameState.isRelaxing = false;
+        gameState.relaxSpot = null;
+        gameState.isHidingInToilet = false;
+        chaos.actionJamTimer = 1.8;
+        gameState.overstimulation = Math.min(MAX_OVERSTIMULATION, gameState.overstimulation + 4);
+        notifyPlayer(`Munty ruined your ${interrupted}.`, 2.4);
+        addDialogue('munty', '*HIGH PITCHED BARK*', 3.2);
+        recordMuntyIncident('anti_calm', { interrupted });
+    }
+
+    if (dadDist < 108 && chaos.controlCooldown <= 0) {
+        const awayX = dadCenterX - munty.x;
+        const awayY = dadCenterY - munty.y;
+        const len = Math.max(1, Math.hypot(awayX, awayY));
+        const side = Math.random() < 0.5 ? -1 : 1;
+        const normX = awayX / len;
+        const normY = awayY / len;
+        chaos.shoveX = normX * 0.72 + (-normY) * 0.28 * side;
+        chaos.shoveY = normY * 0.72 + normX * 0.28 * side;
+        chaos.shoveTimer = 0.55 + Math.random() * 0.35;
+        chaos.actionJamTimer = Math.max(chaos.actionJamTimer, 0.7);
+        chaos.controlCooldown = 3.6 + Math.random() * 1.4;
+        gameState.overstimulation = Math.min(MAX_OVERSTIMULATION, gameState.overstimulation + (gameState.dad.carrying === 'BABY' ? 4.5 : 2.8));
+        notifyPlayer(
+            gameState.dad.carrying === 'BABY'
+                ? 'Munty crashed into you while you were carrying the baby.'
+                : 'Munty cut right across your feet.',
+            2.6
+        );
+        addDialogue('munty', '[SOMEBODY PAY ATTENTION TO MEEEE!]', 3.2);
+        recordMuntyIncident('control_jolt', { carrying: gameState.dad.carrying || null });
+    }
+
+    const adults = [
+        { npc: gameState.npcStates.wife, label: 'Wife', dialogueKey: 'wife', line: 'Can someone get Munty off me?!' },
+        { npc: gameState.npcStates.housemate, label: 'Jake', dialogueKey: 'jake', line: 'Mate. Your demon dog again.' }
+    ];
+    if (chaos.adultCooldown <= 0) {
+        for (const adult of adults) {
+            if (!adult.npc) continue;
+            const dist = Math.hypot(munty.x - adult.npc.x, munty.y - adult.npc.y);
+            if (dist < 84) {
+                clearAdultHelpState(adult.npc);
+                adult.npc.activity = 'flustered';
+                adult.npc.activityTimer = 6 + Math.random() * 4;
+                adult.npc.targetRoom = Math.random() < 0.5 ? 'KITCHEN' : 'LIVING_ROOM';
+                chaos.adultCooldown = 5.5;
+                gameState.overstimulation = Math.min(MAX_OVERSTIMULATION, gameState.overstimulation + 1.8);
+                addDialogue(adult.dialogueKey, adult.line, 3.6);
+                recordMuntyIncident('adult_disruption', { target: adult.label });
+                if (Math.random() < 0.55) {
+                    spawnMuntyMess(getRoomAt(adult.npc.x, adult.npc.y) || 'LIVING_ROOM');
+                }
+                break;
+            }
+        }
+    }
+
+    const baby = gameState.npcStates.baby;
+    if (baby && chaos.babyCooldown <= 0) {
+        const babyDist = Math.hypot(munty.x - baby.x, munty.y - baby.y);
+        if (babyDist < 82) {
+            const wasAsleep = gameState.babyNap.asleepInCot;
+            if (wasAsleep) {
+                wakeBabyFromNap('munty');
+            }
+            gameState.babyNap.overtired = true;
+            baby.overtired = true;
+            baby.activity = 'awake';
+            baby.activityTimer = 2.5;
+            addTaskIfMissing('Settle overtired baby', 'Baby', 'hold', 18, 18);
+            chaos.babyCooldown = 9.5;
+            gameState.overstimulation = Math.min(MAX_OVERSTIMULATION, gameState.overstimulation + 5);
+            notifyPlayer(wasAsleep ? 'Munty woke the baby.' : 'Munty has the baby stirred up again.', 2.8);
+            addDialogue('baby', 'Wahhh!', 4, baby.x, baby.y - 42);
+            recordMuntyIncident('baby_wakeup', { asleep: wasAsleep });
+        }
+    }
+
+    if (chaos.messCooldown <= 0) {
+        if (spawnMuntyMess()) {
+            chaos.messCooldown = 12 + Math.random() * 6;
+        } else {
+            chaos.messCooldown = 5 + Math.random() * 3;
+        }
+    }
+
+    const people = [
+        { x: dadCenterX, y: dadCenterY },
+        gameState.npcStates.wife,
+        gameState.npcStates.housemate,
+        gameState.npcStates.baby
+    ].filter(Boolean);
+    let nearestPersonDist = Infinity;
+    for (const person of people) {
+        nearestPersonDist = Math.min(nearestPersonDist, Math.hypot(munty.x - person.x, munty.y - person.y));
+    }
+
+    if (nearestPersonDist > 240) {
+        chaos.containmentTimer += deltaTime;
+    } else {
+        chaos.containmentTimer = Math.max(0, chaos.containmentTimer - deltaTime * 2);
+    }
+
+    if (chaos.containmentTimer > 5.5 && chaos.containmentBurstCooldown <= 0) {
+        chaos.containmentTimer = 0;
+        chaos.containmentBurstCooldown = 10 + Math.random() * 4;
+        const nearbyClosedDoor = findNearestDoorToPoint(munty.x, munty.y, 96, door => !door.open);
+        if (nearbyClosedDoor) {
+            nearbyClosedDoor.door.open = true;
+            notifyPlayer('Munty let himself back through a door.', 2.6);
+            recordMuntyIncident('containment_whine', { door: nearbyClosedDoor.door.name });
+        } else {
+            notifyPlayer('Munty is howling from somewhere useless.', 2.4);
+            recordMuntyIncident('containment_whine');
+        }
+        spawnAudioRing(munty.x, munty.y, 140);
+        addDialogue('munty', '[LET ME IN! LET ME OUT! LET ME IN!]', 3.4);
+    }
+}
+
 function endDay() {
     recordPlaytestEvent('day_completed', {
         completedDay: gameState.day,
@@ -3752,7 +4064,8 @@ function endDay() {
         setChickenRunGate(true);
         addInitialTasks();
         onNewDay(gameState.day);
-        showModal(`DAY ${gameState.day}`, `Tasks completed: ${gameState.stats.tasksCompleted}\nStress level: ${Math.floor(gameState.overstimulation)}%\n\nGetting harder...`);
+        const report = buildDayTransitionReport(gameState.day);
+        showModal(report.title, report.text, report.kicker);
     } else {
         endRunSuccess();
     }
@@ -3800,43 +4113,37 @@ function spawnMunty() {
         canUseDoors: true,
         activity: 'roaming'
     };
+    gameState.muntyChaos = createInitialMuntyChaosState();
+    notifyPlayer('Day 2: Munty is loose.', 3.0);
+    addDialogue('munty', '*tippy taps intensify*', 3.5);
+    recordPlaytestEvent('munty_spawned');
     console.log(`[SPAWN] Munty spawned in LIVING_ROOM`);
 }
 
 function endRunSuccess() {
     gameState.isRunning = false;
-    const stats = gameState.stats;
     finishPlaytestRun('success');
-    showModal(
-        'YOU SURVIVED!',
-        `You made it through both days!\n\n` +
-        `Tasks completed: ${stats.tasksCompleted}\n` +
-        `Peak stress: ${Math.floor(stats.peakStimulation)}%\n` +
-        `Days survived: ${stats.daysCompleted}\n\n` +
-        `You need a vacation.`
-    );
+    const report = buildRunReport('success');
+    showModal(report.title, report.text, report.kicker);
 }
 
 function endRunStormOff() {
     gameState.isRunning = false;
-    const stats = gameState.stats;
     finishPlaytestRun('stormed_off');
-    showModal(
-        'YOU STORMED OFF',
-        `Day ${gameState.day}: Overstimulated\n\n` +
-        `Tasks completed: ${stats.tasksCompleted}\n` +
-        `Peak stress: ${Math.floor(stats.peakStimulation)}%\n` +
-        `Days survived: ${stats.daysCompleted}\n\n` +
-        `You needed a break.`
-    );
+    const report = buildRunReport('stormed_off');
+    showModal(report.title, report.text, report.kicker);
 }
 
-function showModal(title, text) {
+function showModal(title, text, kicker = 'Run Report') {
     const modal = document.getElementById('modal');
     const modalTitle = document.getElementById('modal-title');
     const modalText = document.getElementById('modal-text');
     const modalButton = document.getElementById('modal-button');
+    const modalKicker = document.querySelector('.modal-kicker');
 
+    if (modalKicker) {
+        modalKicker.textContent = kicker;
+    }
     modalTitle.textContent = title;
     modalText.textContent = text;
     modal.style.display = 'flex';
@@ -3851,6 +4158,105 @@ function showModal(title, text) {
                 location.reload();
             }
         }
+    };
+}
+
+function formatRunClock(totalSeconds) {
+    const wholeSeconds = Math.max(0, Math.floor(totalSeconds));
+    const minutes = Math.floor(wholeSeconds / 60);
+    const seconds = wholeSeconds % 60;
+    return `${minutes}:${seconds.toString().padStart(2, '0')}`;
+}
+
+function getOutstandingChaosNotes() {
+    const notes = [];
+    if (gameState.tasks.length > 0) {
+        notes.push(`${gameState.tasks.length} task${gameState.tasks.length === 1 ? '' : 's'} still live`);
+    }
+    if (gameState.babyNap.overtired) {
+        notes.push('baby still overtired');
+    }
+    if (isDogFeedEventActive()) {
+        notes.push('dogs still waiting on bowls');
+    }
+    if (gameState.timeline.activeSprinklerTrigger !== null && !gameState.sprinklerMoved) {
+        notes.push('sprinkler still blasting');
+    }
+    if (gameState.timeline.chickenCurfewStarted && !gameState.chickensLocked) {
+        notes.push('chickens still loose');
+    }
+    return notes;
+}
+
+function buildDayTransitionReport(nextDay) {
+    const stats = gameState.stats;
+    const survivedHeadline = stats.tasksCompleted >= 10 ? 'You kept Day 1 together.' : 'You scraped through Day 1.';
+    const chaosNote = nextDay === 2
+        ? `Munty is inside now.\nAggressive chickens are joining him.`
+        : `The house is somehow still accepting new chores.`;
+
+    return {
+        kicker: nextDay === 2 ? 'Brace Yourself' : 'Day Break',
+        title: `DAY ${nextDay}`,
+        text:
+            `${survivedHeadline}\n\n` +
+            `Time cleared: ${formatRunClock(gameState.timePerDay)}\n` +
+            `Tasks completed: ${stats.tasksCompleted}\n` +
+            `Peak stress: ${Math.floor(stats.peakStimulation)}%\n` +
+            `Coffee / relax / toilet: ${stats.coffeeBrews} / ${stats.relaxSessions} / ${stats.toiletHides}\n` +
+            `Baby naps / dog feeds: ${stats.babyNapsCompleted} / ${stats.dogFeedsCompleted}\n\n` +
+            `${chaosNote}`
+    };
+}
+
+function buildRunReport(result) {
+    const stats = gameState.stats;
+    const outstanding = getOutstandingChaosNotes();
+    const survivingDay = Math.max(gameState.day, stats.daysCompleted);
+    const calmSummary = `Coffee ${stats.coffeeBrews} | Relax ${stats.relaxSessions} | Toilet ${stats.toiletHides}`;
+    const careSummary = `Baby naps ${stats.babyNapsCompleted} | Dog feeds ${stats.dogFeedsCompleted}`;
+    const muntySummary = stats.muntySabotages > 0
+        ? `Munty chaos ${stats.muntySabotages} hits (${stats.muntyHijacks} shoves, ${stats.muntyWakeups} baby scares, ${stats.muntyMesses} messes)`
+        : `Munty never got a clean cheap shot in.`;
+
+    if (result === 'success') {
+        const verdict = stats.tasksCompleted >= 18
+            ? 'Domestic miracle.'
+            : stats.tasksCompleted >= 12
+                ? 'The house barely stayed civil.'
+                : 'Technically everyone survived.';
+        return {
+            kicker: 'Run Report',
+            title: 'YOU SURVIVED!',
+            text:
+                `${verdict}\n\n` +
+                `Days cleared: ${stats.daysCompleted}\n` +
+                `Tasks completed: ${stats.tasksCompleted}\n` +
+                `Peak stress: ${Math.floor(stats.peakStimulation)}%\n` +
+                `Run length: ${formatRunClock(gameState.timePerDay * DAYS)}\n` +
+                `${calmSummary}\n` +
+                `${careSummary}\n` +
+                `${muntySummary}\n\n` +
+                `${outstanding.length ? `Still on fire: ${outstanding.join(', ')}.` : 'You left before the next disaster spawned.'}`
+        };
+    }
+
+    const causeLine = stats.muntySabotages > 0 && gameState.day >= 2
+        ? `Breaking point: Munty kept landing hits while the rest of the house piled on.`
+        : `Breaking point: the house got louder faster than you could calm it down.`;
+    return {
+        kicker: 'Meltdown Report',
+        title: 'YOU STORMED OFF',
+        text:
+            `${causeLine}\n\n` +
+            `Day reached: ${survivingDay}\n` +
+            `Clock: ${formatRunClock(gameState.time)}\n` +
+            `Tasks completed: ${stats.tasksCompleted}\n` +
+            `Peak stress: ${Math.floor(stats.peakStimulation)}%\n` +
+            `${calmSummary}\n` +
+            `${careSummary}\n` +
+            `${muntySummary}\n\n` +
+            `${outstanding.length ? `Unfinished pressure: ${outstanding.join(', ')}.` : 'You still chose the driveway over this nonsense.'}`
     };
 }
 
@@ -4527,9 +4933,10 @@ function updateMunty(munty, deltaTime) {
     const wife = gameState.npcStates.wife;
     const jake = gameState.npcStates.housemate;
     const baby = gameState.npcStates.baby;
+    const babyCot = getBabyCotCenter();
 
     // Define people array for Munty behavior (used below for closest person tracking)
-    const people = [{x: dad.x, y: dad.y}, wife, jake, baby];
+    const people = [{ x: dad.x, y: dad.y }, wife, jake, baby].filter(Boolean);
 
     // PRIORITY 1: Race to dog patio if anyone is near dog bowls
     const dogBowls = POIS.DOG_BOWLS;
@@ -4556,6 +4963,17 @@ function updateMunty(munty, deltaTime) {
         return;
     }
 
+    // PRIORITY 2: punish calm-down attempts and baby sleep.
+    if (gameState.isRelaxing || gameState.isHidingInToilet || gameState.dad.carrying === 'BABY') {
+        navigateToTarget(munty, dad.x, dad.y, deltaTime * 1.45, 42);
+        return;
+    }
+
+    if (gameState.babyNap.asleepInCot && babyCot) {
+        navigateToTarget(munty, babyCot.x, babyCot.y, deltaTime * 1.3, 40);
+        return;
+    }
+
     // Find nearest person
     let closest = null;
     let closestDist = Infinity;
@@ -4569,13 +4987,12 @@ function updateMunty(munty, deltaTime) {
 
     // Always move toward nearest person chaotically
     if (closest) {
-        // Add randomness to movement
-        const jitterX = (Math.random() - 0.5) * 20;
-        const jitterY = (Math.random() - 0.5) * 20;
-        moveTowardPoint(munty, closest.x + jitterX, closest.y + jitterY, deltaTime * 1.5);
+        const jitterX = (Math.random() - 0.5) * 28;
+        const jitterY = (Math.random() - 0.5) * 28;
+        navigateToTarget(munty, closest.x + jitterX, closest.y + jitterY, deltaTime * 1.35, 38);
     } else {
         // No people nearby - roam chaotically
-        moveNPC(munty, deltaTime, ['LIVING_ROOM', 'KITCHEN', 'DOG_YARD', 'CHICKEN_YARD']);
+        moveNPC(munty, deltaTime, ['LIVING_ROOM', 'KITCHEN', 'DOG_YARD', 'CHICKEN_YARD', 'BABYS_ROOM']);
     }
 }
 
@@ -5231,6 +5648,7 @@ function finishDogFeedEvent() {
     if (!isDogFeedEventActive()) return;
     gameState.timeline.nextDogFeedIndex++;
     gameState.timeline.activeDogFeedTrigger = null;
+    gameState.stats.dogFeedsCompleted++;
     gameState.overstimulation = Math.max(0, gameState.overstimulation - 4);
     notifyPlayer('Dogs fed.', 2.6);
     addDialogue('momo', '[SUSTENANCE!]', 2.5);
@@ -5397,6 +5815,7 @@ function updateStressLogic(dt) {
     let momoNearby = false;
     let piperNearby = false;
     let babyNearby = false;
+    let muntyNearby = false;
 
     // Check Momo (brown dog) - ALWAYS stressful when nearby
     if (gameState.npcStates.brownDog) {
@@ -5457,6 +5876,30 @@ function updateStressLogic(dt) {
         proximityStress += 0.12;
     }
 
+    if (gameState.npcStates.munty) {
+        const distToMunty = Math.hypot(
+            gameState.npcStates.munty.x - dadCenterX,
+            gameState.npcStates.munty.y - dadCenterY
+        );
+        if (distToMunty < proximityThreshold + 10) {
+            muntyNearby = true;
+            proximityStress += 0.45;
+            if (gameState.isRelaxing || gameState.isHidingInToilet) {
+                proximityStress += 0.35;
+            }
+            if (gameState.dad.carrying === 'BABY') {
+                proximityStress += 0.18;
+            }
+        }
+    }
+
+    if (gameState.muntyChaos.actionJamTimer > 0) {
+        proximityStress += 0.22;
+    }
+    if (gameState.muntyChaos.shoveTimer > 0) {
+        proximityStress += 0.16;
+    }
+
     stressRate += proximityStress;
 
     // 3. Stress REDUCTION based on what player is doing
@@ -5504,6 +5947,7 @@ function updateStressLogic(dt) {
         if (momoNearby) proximityParts.push('Momo');
         if (piperNearby) proximityParts.push('Piper');
         if (babyNearby) proximityParts.push('Baby');
+        if (muntyNearby) proximityParts.push('Munty');
         const proximityInfo = proximityParts.length > 0 ? ` | Proximity: ${proximityParts.join('+') || 'none'}` : '';
         console.log(`[STRESS] Rate: ${stressRate.toFixed(2)}/s | Current: ${gameState.overstimulation.toFixed(1)}/100 | Moving: ${isMoving} | Standing still: ${isStandingStill} | Tasks: ${incompleteTasks}${proximityInfo}`);
     }
@@ -5646,12 +6090,27 @@ function fitHudText(text, maxWidth, font) {
 
 function drawHudCard(x, y, width, height, accentColor = 'rgba(134, 212, 255, 0.36)') {
     const fill = ctx.createLinearGradient(x, y, x, y + height);
-    fill.addColorStop(0, 'rgba(8, 13, 19, 0.9)');
-    fill.addColorStop(1, 'rgba(18, 29, 41, 0.78)');
+    fill.addColorStop(0, 'rgba(9, 15, 22, 0.94)');
+    fill.addColorStop(0.55, 'rgba(18, 29, 41, 0.84)');
+    fill.addColorStop(1, 'rgba(13, 20, 30, 0.8)');
 
+    ctx.save();
+    ctx.shadowColor = accentColor;
+    ctx.shadowBlur = 18;
     fillRoundedRect(x, y, width, height, 18, fill);
+    ctx.restore();
     strokeRoundedRect(x, y, width, height, 18, accentColor, 1.5);
     fillRoundedRect(x + 14, y + 12, Math.min(width - 28, 54), 4, 2, accentColor);
+
+    const gloss = ctx.createLinearGradient(x, y, x, y + height * 0.55);
+    gloss.addColorStop(0, 'rgba(255, 255, 255, 0.08)');
+    gloss.addColorStop(1, 'rgba(255, 255, 255, 0)');
+    ctx.save();
+    traceRoundedRect(x, y, width, height, 18);
+    ctx.clip();
+    ctx.fillStyle = gloss;
+    ctx.fillRect(x, y, width, height * 0.55);
+    ctx.restore();
 }
 
 function drawHudBar(x, y, width, height, ratio, startColor, endColor, trackColor = 'rgba(255, 255, 255, 0.08)') {
@@ -5670,6 +6129,8 @@ function drawHudBar(x, y, width, height, ratio, startColor, endColor, trackColor
     ctx.clip();
     ctx.fillStyle = fill;
     ctx.fillRect(x, y, width * clampedRatio, height);
+    ctx.fillStyle = 'rgba(255, 255, 255, 0.14)';
+    ctx.fillRect(x, y, width * clampedRatio, Math.max(2, height * 0.45));
     ctx.restore();
 }
 
@@ -5698,6 +6159,99 @@ function drawHudPill(x, y, text, options = {}) {
     ctx.restore();
 
     return width;
+}
+
+function getNotificationHudTheme(message = '') {
+    const upper = message.toUpperCase();
+    if (upper.includes('MUNTY')) {
+        return { accent: 'rgba(255, 109, 118, 0.48)', fill: 'rgba(255, 109, 118, 0.16)', stroke: 'rgba(255, 109, 118, 0.4)', text: '#ffe4e8', label: 'MUNTY ALERT' };
+    }
+    if (upper.includes('DOG')) {
+        return { accent: 'rgba(147, 239, 156, 0.42)', fill: 'rgba(147, 239, 156, 0.14)', stroke: 'rgba(147, 239, 156, 0.36)', text: '#e5ffe7', label: 'DOG CHAOS' };
+    }
+    if (upper.includes('BABY') || upper.includes('NAP')) {
+        return { accent: 'rgba(255, 192, 133, 0.45)', fill: 'rgba(255, 192, 133, 0.15)', stroke: 'rgba(255, 192, 133, 0.38)', text: '#fff0df', label: 'BABY PRESSURE' };
+    }
+    if (upper.includes('CHICKEN')) {
+        return { accent: 'rgba(255, 209, 111, 0.46)', fill: 'rgba(255, 209, 111, 0.16)', stroke: 'rgba(255, 209, 111, 0.4)', text: '#fff0c8', label: 'YARD CHAOS' };
+    }
+    if (upper.includes('COFFEE') || upper.includes('BEER')) {
+        return { accent: 'rgba(255, 181, 108, 0.44)', fill: 'rgba(255, 181, 108, 0.15)', stroke: 'rgba(255, 181, 108, 0.38)', text: '#fff0d8', label: 'SMALL VICTORY' };
+    }
+    return { accent: 'rgba(134, 212, 255, 0.42)', fill: 'rgba(134, 212, 255, 0.15)', stroke: 'rgba(134, 212, 255, 0.4)', text: '#f1f8ff', label: 'LIVE EVENT' };
+}
+
+function drawScreenMoodOverlay() {
+    const stressRatio = Math.max(0, Math.min(1, gameState.overstimulation / MAX_OVERSTIMULATION));
+    const pulse = 0.5 + 0.5 * Math.sin(gameState.time * 4.4);
+
+    ctx.save();
+
+    const topWash = ctx.createLinearGradient(0, 0, 0, GAME_HEIGHT * 0.42);
+    topWash.addColorStop(0, `rgba(93, 166, 224, ${0.06 + gameState.day * 0.015})`);
+    topWash.addColorStop(1, 'rgba(93, 166, 224, 0)');
+    ctx.fillStyle = topWash;
+    ctx.fillRect(0, 0, GAME_WIDTH, GAME_HEIGHT);
+
+    if (gameState.coffeeBuff) {
+        const coffeeGlow = ctx.createRadialGradient(GAME_WIDTH * 0.5, GAME_HEIGHT * 0.2, 0, GAME_WIDTH * 0.5, GAME_HEIGHT * 0.2, GAME_WIDTH * 0.42);
+        coffeeGlow.addColorStop(0, 'rgba(255, 209, 111, 0.14)');
+        coffeeGlow.addColorStop(1, 'rgba(255, 209, 111, 0)');
+        ctx.fillStyle = coffeeGlow;
+        ctx.fillRect(0, 0, GAME_WIDTH, GAME_HEIGHT);
+    }
+
+    if (gameState.day >= 2 || gameState.npcStates.munty) {
+        const hostileGlow = ctx.createRadialGradient(GAME_WIDTH * 0.78, GAME_HEIGHT * 0.16, 0, GAME_WIDTH * 0.78, GAME_HEIGHT * 0.16, GAME_WIDTH * 0.38);
+        hostileGlow.addColorStop(0, `rgba(255, 109, 118, ${0.08 + pulse * 0.04})`);
+        hostileGlow.addColorStop(1, 'rgba(255, 109, 118, 0)');
+        ctx.fillStyle = hostileGlow;
+        ctx.fillRect(0, 0, GAME_WIDTH, GAME_HEIGHT);
+    }
+
+    const vignette = ctx.createRadialGradient(
+        GAME_WIDTH / 2,
+        GAME_HEIGHT / 2,
+        GAME_HEIGHT * 0.18,
+        GAME_WIDTH / 2,
+        GAME_HEIGHT / 2,
+        GAME_WIDTH * 0.72
+    );
+    vignette.addColorStop(0, 'rgba(0, 0, 0, 0)');
+    vignette.addColorStop(0.68, `rgba(5, 9, 14, ${0.08 + stressRatio * 0.08})`);
+    vignette.addColorStop(1, `rgba(2, 4, 8, ${0.34 + stressRatio * 0.24})`);
+    ctx.fillStyle = vignette;
+    ctx.fillRect(0, 0, GAME_WIDTH, GAME_HEIGHT);
+
+    if (stressRatio > 0.56) {
+        const stressGlow = ctx.createRadialGradient(GAME_WIDTH / 2, GAME_HEIGHT / 2, GAME_HEIGHT * 0.14, GAME_WIDTH / 2, GAME_HEIGHT / 2, GAME_WIDTH * 0.66);
+        stressGlow.addColorStop(0, 'rgba(255, 109, 118, 0)');
+        stressGlow.addColorStop(0.7, `rgba(255, 109, 118, ${0.05 + stressRatio * 0.07 * pulse})`);
+        stressGlow.addColorStop(1, `rgba(255, 79, 102, ${0.07 + stressRatio * 0.1 * pulse})`);
+        ctx.fillStyle = stressGlow;
+        ctx.fillRect(0, 0, GAME_WIDTH, GAME_HEIGHT);
+    }
+
+    ctx.strokeStyle = `rgba(255, 255, 255, ${0.08 + stressRatio * 0.06})`;
+    ctx.lineWidth = 1.5;
+    const inset = 10;
+    const bracket = 20;
+    ctx.beginPath();
+    ctx.moveTo(inset + bracket, inset);
+    ctx.lineTo(inset, inset);
+    ctx.lineTo(inset, inset + bracket);
+    ctx.moveTo(GAME_WIDTH - inset - bracket, inset);
+    ctx.lineTo(GAME_WIDTH - inset, inset);
+    ctx.lineTo(GAME_WIDTH - inset, inset + bracket);
+    ctx.moveTo(inset + bracket, GAME_HEIGHT - inset);
+    ctx.lineTo(inset, GAME_HEIGHT - inset);
+    ctx.lineTo(inset, GAME_HEIGHT - inset - bracket);
+    ctx.moveTo(GAME_WIDTH - inset - bracket, GAME_HEIGHT - inset);
+    ctx.lineTo(GAME_WIDTH - inset, GAME_HEIGHT - inset);
+    ctx.lineTo(GAME_WIDTH - inset, GAME_HEIGHT - inset - bracket);
+    ctx.stroke();
+
+    ctx.restore();
 }
 
 function getStressHudTone(value) {
@@ -5799,6 +6353,10 @@ function drawModernHUD() {
         ? Math.max(0, Math.min(1, 1 - (gameState.barkCooldown / gameState.barkCooldownMax)))
         : 1;
     const stressTone = getStressHudTone(gameState.overstimulation);
+    const headerLabel = gameState.day >= 2 ? 'HOUSE ON FIRE' : 'KEEP IT TOGETHER';
+    const statusHint = gameState.npcStates.munty
+        ? 'Munty punishes calm-down attempts. Keep moving and cash in tasks fast.'
+        : 'Stand still to settle faster. Relax spots drain stress the fastest.';
     const playtestInset = playtestElements.panel && !playtestBot.panelCollapsed && window.innerWidth > 1100 ? 190 : 0;
 
     const headerX = 18;
@@ -5810,7 +6368,7 @@ function drawModernHUD() {
     ctx.textBaseline = 'top';
     ctx.fillStyle = '#84d5ff';
     ctx.font = '700 10px Consolas, "Lucida Console", monospace';
-    ctx.fillText('HOUSE STATUS', headerX + 18, headerY + 18);
+    ctx.fillText(headerLabel, headerX + 18, headerY + 18);
 
     ctx.fillStyle = '#f6fbff';
     ctx.font = '700 28px Impact, Haettenschweiler, "Arial Narrow Bold", sans-serif';
@@ -5840,6 +6398,7 @@ function drawModernHUD() {
     }
 
     if (gameState.notification) {
+        const noticeTheme = getNotificationHudTheme(gameState.notification.message);
         const noticeFont = '700 13px "Trebuchet MS", "Segoe UI", sans-serif';
         const noticeText = fitHudText(gameState.notification.message, 344, noticeFont);
         ctx.save();
@@ -5849,17 +6408,17 @@ function drawModernHUD() {
 
         const noticeX = (GAME_WIDTH - noticeWidth) / 2;
         const noticeY = 18;
-        drawHudCard(noticeX, noticeY, noticeWidth, 54, 'rgba(255, 209, 111, 0.42)');
-        drawHudPill(noticeX + 18, noticeY + 15, 'LIVE EVENT', {
-            fill: 'rgba(255, 209, 111, 0.18)',
-            stroke: 'rgba(255, 209, 111, 0.4)',
-            textColor: '#ffefc7',
+        drawHudCard(noticeX, noticeY, noticeWidth, 54, noticeTheme.accent);
+        drawHudPill(noticeX + 18, noticeY + 15, noticeTheme.label, {
+            fill: noticeTheme.fill,
+            stroke: noticeTheme.stroke,
+            textColor: noticeTheme.text,
             height: 20,
             paddingX: 8
         });
         ctx.textAlign = 'center';
         ctx.textBaseline = 'middle';
-        ctx.fillStyle = '#fff5dc';
+        ctx.fillStyle = noticeTheme.text;
         ctx.font = noticeFont;
         ctx.fillText(noticeText, noticeX + noticeWidth / 2, noticeY + 35);
     }
@@ -6046,6 +6605,16 @@ function drawModernHUD() {
             }
         });
     }
+    if (gameState.npcStates.munty) {
+        chips.push({
+            text: 'MUNTY LOOSE',
+            options: {
+                fill: 'rgba(255, 109, 118, 0.18)',
+                stroke: 'rgba(255, 109, 118, 0.36)',
+                textColor: '#ffe2e7'
+            }
+        });
+    }
 
     let chipX = statusX + 18;
     let chipY = statusY + 36;
@@ -6063,7 +6632,7 @@ function drawModernHUD() {
     ctx.textAlign = 'left';
     ctx.fillStyle = '#b8cad8';
     ctx.font = '600 12px "Trebuchet MS", "Segoe UI", sans-serif';
-    ctx.fillText('Stand still to settle faster. Relax spots drain stress the fastest.', statusX + 18, statusY + 66);
+    ctx.fillText(statusHint, statusX + 18, statusY + 66);
 
     const movementX = GAME_WIDTH - 248 - playtestInset;
     const movementY = GAME_HEIGHT - 106;
@@ -7598,6 +8167,8 @@ function render() {
 
     // Restore camera transform (back to screen space for UI)
     ctx.restore();
+
+    drawScreenMoodOverlay();
 
     if (interactionState) {
         const promptAnchor = worldToScreen(dadPixelX, dadPixelY);

@@ -299,6 +299,10 @@ Current live behavior:
 - Vibrates and pulses visually
 - Ignores normal fence expectations
 - Makes the house feel actively more hostile
+- Shoves Dad off calm-down attempts and task setup
+- Upsets Wife/Jake and breaks up helpful routines
+- Wakes or overstimulates the baby if left near the cot
+- Leaves extra mess behind and can force his way back through doors when contained
 
 Still-valid design target:
 
@@ -321,11 +325,10 @@ Still-valid design target:
 - Dialogue bubbles, world labels, in-world prompts, HUD, and mobile touch controls
 - Built-in autoplay panel with event log and telemetry export
 - External direct player bot with JSON reports
+- Run-end and day-break report modals with richer stat summaries
 
 ### Partial but still intended
 
-- Munty's full sabotage toolkit
-- End-of-day summary / stronger run-end presentation
 - More room-specific chores and activities
 
 ### Explicitly out of scope for the current project
