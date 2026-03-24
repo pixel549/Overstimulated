@@ -246,6 +246,10 @@ class DirectPlayerBot:
             base -= 15
         if snapshot["overstimulation"] > 75 and task["type"] == "hold":
             base -= 20
+        if len(snapshot["tasks"]) > 4 and task["type"] == "hold":
+            base -= 25
+        if snapshot["overstimulation"] > 60 and task["location"] == "Baby":
+            base -= 15
         return base - (task["distance"] or 0) / 30.0
 
     def choose_best_task_objective(self, snapshot: dict[str, Any], snapshot_time: float) -> Objective | None:
@@ -298,7 +302,9 @@ class DirectPlayerBot:
                 if current_task is None:
                     self.current_objective = None
                 else:
-                    timeout = 14.0 if self.current_objective.task_type == "fetch" else 18.0
+                    timeout = 14.0 if self.current_objective.task_type == "fetch" else (
+                        24.0 if self.current_objective.task_type == "hold" else 18.0
+                    )
                     distance = float(current_task.get("distance") or self.objective_distance(snapshot, self.current_objective))
                     progress = float(current_task.get("progress") or 0.0)
                     if (snapshot_time - self.objective_started_at) > timeout and progress <= 0.25 and distance > 72:
@@ -307,7 +313,11 @@ class DirectPlayerBot:
                     elif (
                         best_task_objective
                         and best_task_objective.key != self.current_objective.key
-                        and (snapshot_time - self.objective_started_at) > 3.0
+                        and (snapshot_time - self.objective_started_at) > (
+                            8.0 if self.current_objective.task_type == "hold" else 5.0
+                        )
+                        and progress <= 0.1
+                        and distance > 110
                     ):
                         self.current_objective = None
                     else:
@@ -427,13 +437,14 @@ class DirectPlayerBot:
         if objective.type == "task" and nearby_task and nearby_task["id"] == objective.task_id:
             distance = float(nearby_task.get("distance") or self.objective_distance(snapshot, objective))
             if objective.task_type == "fetch":
-                if distance > 56:
+                if distance > 64:
                     self.move_toward(snapshot, objective.target_x, objective.target_y)
                 else:
                     self.clear_controls()
                     self.tap("action")
             else:
-                if distance > 40:
+                task_hold_distance = 64 if objective.task_type == "hold" else 56
+                if distance > task_hold_distance:
                     self.move_toward(snapshot, objective.target_x, objective.target_y, action_held=True)
                 else:
                     self.set_controls(actionHeld=True)

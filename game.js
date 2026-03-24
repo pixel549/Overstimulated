@@ -393,6 +393,7 @@ for (const d of DOORS) {
     NAV_GRAPH[d.name] = { isDoor: true, x: (d.x + d.w / 2) * TILE_SIZE, y: (d.y + d.h / 2) * TILE_SIZE, rooms: [] };
 }
 const ROOM_MAP = { 'Kitchen': 'KITCHEN', 'Living': 'LIVING_ROOM', 'Corridor (left)': 'CORRIDOR_LEFT', 'Corridor (right)': 'CORRIDOR_RIGHT', 'Master Bedroom': 'MASTER_BEDROOM', 'Baby': 'BABYS_ROOM', 'Reading': 'READING__DOG_ROOM', 'Ensuite': 'ENSUITE', 'Housemate': 'HOUSEMATE_ROOM', 'Office': 'HOME_OFFICE', 'Spare': 'SPARE_ROOM', 'Patio': 'PATIO_MAIN', 'Patio strip': 'PATIO_STRIP', 'Dog patio': 'DOG_PATIO', 'Yard': 'DOG_YARD', 'Shed': 'SHED', 'Chicken run': 'CHICKEN_RUN', 'Coop': 'CHICKEN_COOP', 'Run': 'CHICKEN_RUN', 'Master': 'MASTER_BEDROOM' };
+const OUTDOOR_ROOM_KEYS = new Set(['PATIO_MAIN', 'PATIO_STRIP', 'DOG_PATIO', 'DOG_YARD', 'CHICKEN_YARD', 'SHED', 'CHICKEN_RUN', 'CHICKEN_COOP']);
 for (const [doorName, node] of Object.entries(NAV_GRAPH)) {
     if (!node.isDoor) continue;
     const parts = doorName.split(' → ');
@@ -1487,6 +1488,8 @@ function scoreTaskForPlaytest(task) {
     if (task.name.startsWith('Collect toys')) score += 35 + task.maxProgress;
     if (task.location === 'Baby') score -= 15;
     if (gameState.overstimulation > 75 && task.type === 'hold') score -= 20;
+    if (gameState.tasks.length > 4 && task.type === 'hold') score -= 25;
+    if (gameState.overstimulation > 60 && task.location === 'Baby') score -= 15;
 
     return score - distancePenalty;
 }
@@ -2102,6 +2105,13 @@ function addTaskIfMissing(name, location, type, duration = 0, maxProgress = 1) {
     return task;
 }
 
+function getTaskInteractionThreshold(task) {
+    if (!task) return 120;
+    if (task.type === 'hold') return 140;
+    if (task.type === 'coverage') return 128;
+    return 112;
+}
+
 function getTaskTargetPosition(task) {
     const poi = getPOIByName(task.location);
     if (!poi) return null;
@@ -2546,9 +2556,8 @@ function update(deltaTime) {
 }
 
 function findNearbyTask() {
-    const threshold = 120;
     let closest = null;
-    let closestDist = threshold;
+    let closestDist = Infinity;
 
     const dadCenterX = gameState.dad.x + gameState.dad.width / 2;
     const dadCenterY = gameState.dad.y + gameState.dad.height / 2;
@@ -2561,7 +2570,8 @@ function findNearbyTask() {
                 dadCenterX - poi.x * TILE_SIZE,
                 dadCenterY - poi.y * TILE_SIZE
             );
-            if (dist < closestDist) {
+            const threshold = getTaskInteractionThreshold(task);
+            if (dist < threshold && dist < closestDist) {
                 closestDist = dist;
                 closest = task;
             }
@@ -3214,10 +3224,13 @@ function generateRandomTasks() {
 
     if (Math.random() < spawnChance && taskBacklog < 7 + gameState.day) {
         const chore = routineChores[Math.floor(Math.random() * routineChores.length)];
-        console.log(`[TASK SPAWN] Creating routine chore: ${chore.name}`);
-        gameState.tasks.push(
-            new Task(gameState.nextTaskId++, chore.type, chore.name, chore.location, chore.duration, 0, chore.duration || 1)
-        );
+        const alreadyExists = gameState.tasks.some(t => t.name === chore.name);
+        if (!alreadyExists) {
+            console.log(`[TASK SPAWN] Creating routine chore: ${chore.name}`);
+            gameState.tasks.push(
+                new Task(gameState.nextTaskId++, chore.type, chore.name, chore.location, chore.duration, 0, chore.duration || 1)
+            );
+        }
     }
 
     // WIFE-ASSIGNED TASKS - More likely when stress is high
@@ -4218,6 +4231,27 @@ function getWaypointPathDistance(path) {
     return total;
 }
 
+function getWaypointPathEnvironmentPenalty(path, startRoomKey, targetRoomKey) {
+    if (!startRoomKey || !targetRoomKey) return 0;
+
+    const startOutdoor = OUTDOOR_ROOM_KEYS.has(startRoomKey);
+    const targetOutdoor = OUTDOOR_ROOM_KEYS.has(targetRoomKey);
+    if (startOutdoor !== targetOutdoor) return 0;
+
+    let penalty = 0;
+    for (const waypointName of path || []) {
+        const waypoint = WAYPOINTS[waypointName];
+        if (!waypoint) continue;
+        const waypointRooms = waypoint.rooms || [waypointName];
+        const touchesOutdoor = waypointRooms.some(roomKey => OUTDOOR_ROOM_KEYS.has(roomKey));
+        if ((startOutdoor && !touchesOutdoor) || (!startOutdoor && touchesOutdoor)) {
+            penalty += 220;
+        }
+    }
+
+    return penalty;
+}
+
 function getRoomWaypointPenalty(waypointName) {
     const waypoint = WAYPOINTS[waypointName];
     if (!waypoint || isDoorWaypointName(waypointName)) return 0;
@@ -4311,6 +4345,8 @@ function getWaypointCandidatesForPosition(x, y, bodySize = DAD_HITBOX_SIZE, maxC
 function findBestWaypointRoute(startX, startY, targetX, targetY, options = {}) {
     const bodySize = options.bodySize || DAD_HITBOX_SIZE;
     const routeContext = options.routeContext || null;
+    const startRoomKey = getRoomAt(startX, startY);
+    const targetRoomKey = getRoomAt(targetX, targetY);
     const rawStartCandidates = getWaypointCandidatesForPosition(startX, startY, bodySize, 6, targetX, targetY);
     const rawEndCandidates = getWaypointCandidatesForPosition(targetX, targetY, bodySize, 4, startX, startY);
     const startCandidates = rawStartCandidates.some(candidate => candidate.inSameRoom)
@@ -4327,7 +4363,10 @@ function findBestWaypointRoute(startX, startY, targetX, targetY, options = {}) {
             const path = findWaypointPath(startCandidate.waypoint, endCandidate.waypoint, routeContext);
             if (!path || path.length === 0) continue;
 
-            const totalScore = startCandidate.score + endCandidate.score + getWaypointPathDistance(path);
+            const totalScore = startCandidate.score
+                + endCandidate.score
+                + getWaypointPathDistance(path)
+                + getWaypointPathEnvironmentPenalty(path, startRoomKey, targetRoomKey);
             if (!bestRoute || totalScore < bestRoute.score) {
                 bestRoute = {
                     score: totalScore,
