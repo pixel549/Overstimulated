@@ -4,10 +4,17 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Overstimulated - Personal Space Invaders</title>
+    <link rel="icon" href="data:,">
     <link rel="stylesheet" href="style.css">
 </head>
 <body>
     <div id="game-container">
+        <div id="game-brand" aria-hidden="true">
+            <div class="brand-kicker">Domestic Pressure Sim</div>
+            <div class="brand-title">OVERSTIMULATED</div>
+            <div class="brand-meta">WASD move | E act / hold | Q bark | R talk</div>
+        </div>
+
         <canvas id="gameCanvas"></canvas>
 
         <div id="touch-controls">
@@ -30,6 +37,7 @@
 
         <div id="modal" style="display: none;">
             <div id="modal-content">
+                <div class="modal-kicker">Run Report</div>
                 <h2 id="modal-title"></h2>
                 <p id="modal-text"></p>
                 <button id="modal-button">CONTINUE</button>

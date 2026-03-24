@@ -139,6 +139,7 @@ function syncPlaytestPanelState() {
 
     const shouldCollapse = playtestBot.panelCollapsed;
     playtestElements.panel.classList.toggle('is-collapsed', shouldCollapse);
+    playtestElements.panel.dataset.collapsed = shouldCollapse ? 'true' : 'false';
 
     if (playtestElements.collapse) {
         playtestElements.collapse.textContent = shouldCollapse ? 'MORE' : 'LESS';
@@ -1139,6 +1140,8 @@ function updatePlaytestUI() {
     const recentEvents = eventSource ? eventSource.events.slice(-PLAYTEST_LOG_LIMIT) : [];
 
     playtestElements.status.textContent = stateLabel;
+    playtestElements.panel.dataset.mode = playtestBot.active ? 'online' : 'offline';
+    playtestElements.status.dataset.mode = playtestBot.active ? 'online' : 'offline';
     playtestElements.summary.textContent = lines.join('\n');
     if (playtestElements.details) {
         playtestElements.details.textContent = detailLines.join('\n');
@@ -5186,7 +5189,510 @@ function updateCamera() {
 
 // Toilet vignette effect
 // ===== CANVAS-BASED HUD (Screen Space) =====
+function traceRoundedRect(x, y, width, height, radius = 12) {
+    const clampedRadius = Math.max(0, Math.min(radius, width / 2, height / 2));
+    ctx.beginPath();
+    ctx.moveTo(x + clampedRadius, y);
+    ctx.lineTo(x + width - clampedRadius, y);
+    ctx.quadraticCurveTo(x + width, y, x + width, y + clampedRadius);
+    ctx.lineTo(x + width, y + height - clampedRadius);
+    ctx.quadraticCurveTo(x + width, y + height, x + width - clampedRadius, y + height);
+    ctx.lineTo(x + clampedRadius, y + height);
+    ctx.quadraticCurveTo(x, y + height, x, y + height - clampedRadius);
+    ctx.lineTo(x, y + clampedRadius);
+    ctx.quadraticCurveTo(x, y, x + clampedRadius, y);
+    ctx.closePath();
+}
+
+function fillRoundedRect(x, y, width, height, radius, fillStyle) {
+    ctx.save();
+    traceRoundedRect(x, y, width, height, radius);
+    ctx.fillStyle = fillStyle;
+    ctx.fill();
+    ctx.restore();
+}
+
+function strokeRoundedRect(x, y, width, height, radius, strokeStyle, lineWidth = 1) {
+    ctx.save();
+    traceRoundedRect(x, y, width, height, radius);
+    ctx.lineWidth = lineWidth;
+    ctx.strokeStyle = strokeStyle;
+    ctx.stroke();
+    ctx.restore();
+}
+
+function fitHudText(text, maxWidth, font) {
+    if (!text) return '';
+
+    ctx.save();
+    ctx.font = font;
+
+    if (ctx.measureText(text).width <= maxWidth) {
+        ctx.restore();
+        return text;
+    }
+
+    let clipped = text;
+    while (clipped.length > 1 && ctx.measureText(`${clipped}...`).width > maxWidth) {
+        clipped = clipped.slice(0, -1);
+    }
+
+    ctx.restore();
+    return `${clipped}...`;
+}
+
+function drawHudCard(x, y, width, height, accentColor = 'rgba(134, 212, 255, 0.36)') {
+    const fill = ctx.createLinearGradient(x, y, x, y + height);
+    fill.addColorStop(0, 'rgba(8, 13, 19, 0.9)');
+    fill.addColorStop(1, 'rgba(18, 29, 41, 0.78)');
+
+    fillRoundedRect(x, y, width, height, 18, fill);
+    strokeRoundedRect(x, y, width, height, 18, accentColor, 1.5);
+    fillRoundedRect(x + 14, y + 12, Math.min(width - 28, 54), 4, 2, accentColor);
+}
+
+function drawHudBar(x, y, width, height, ratio, startColor, endColor, trackColor = 'rgba(255, 255, 255, 0.08)') {
+    const clampedRatio = Math.max(0, Math.min(1, ratio));
+    fillRoundedRect(x, y, width, height, height / 2, trackColor);
+    strokeRoundedRect(x, y, width, height, height / 2, 'rgba(255, 255, 255, 0.08)', 1);
+
+    if (clampedRatio <= 0) return;
+
+    const fill = ctx.createLinearGradient(x, y, x + width, y);
+    fill.addColorStop(0, startColor);
+    fill.addColorStop(1, endColor);
+
+    ctx.save();
+    traceRoundedRect(x, y, width, height, height / 2);
+    ctx.clip();
+    ctx.fillStyle = fill;
+    ctx.fillRect(x, y, width * clampedRatio, height);
+    ctx.restore();
+}
+
+function drawHudPill(x, y, text, options = {}) {
+    const font = options.font || '700 10px Consolas, "Lucida Console", monospace';
+    const paddingX = options.paddingX || 10;
+    const height = options.height || 22;
+    const fill = options.fill || 'rgba(134, 212, 255, 0.14)';
+    const stroke = options.stroke || 'rgba(134, 212, 255, 0.3)';
+    const textColor = options.textColor || '#f5f9ff';
+
+    ctx.save();
+    ctx.font = font;
+    const width = Math.max(options.minWidth || 0, Math.ceil(ctx.measureText(text).width) + paddingX * 2);
+    ctx.restore();
+
+    fillRoundedRect(x, y, width, height, height / 2, fill);
+    strokeRoundedRect(x, y, width, height, height / 2, stroke, 1);
+
+    ctx.save();
+    ctx.font = font;
+    ctx.fillStyle = textColor;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(text, x + width / 2, y + height / 2 + 0.5);
+    ctx.restore();
+
+    return width;
+}
+
+function getStressHudTone(value) {
+    if (value < 25) {
+        return {
+            label: 'STEADY',
+            accent: 'rgba(147, 239, 156, 0.45)',
+            start: '#9aef95',
+            end: '#4bc287',
+            text: '#dfffe2',
+            hint: 'You still have room to breathe.'
+        };
+    }
+    if (value < 50) {
+        return {
+            label: 'FRAYED',
+            accent: 'rgba(255, 209, 111, 0.45)',
+            start: '#ffe084',
+            end: '#f1b75c',
+            text: '#fff0cc',
+            hint: 'Short pauses will settle things.'
+        };
+    }
+    if (value < 75) {
+        return {
+            label: 'CROWDED',
+            accent: 'rgba(255, 171, 90, 0.45)',
+            start: '#ffc275',
+            end: '#ff9465',
+            text: '#ffe5d2',
+            hint: 'Finish a task or find a calmer spot.'
+        };
+    }
+    if (value < 90) {
+        return {
+            label: 'SPIRALING',
+            accent: 'rgba(255, 141, 132, 0.5)',
+            start: '#ffa48d',
+            end: '#ff6d76',
+            text: '#ffe1de',
+            hint: 'Hide, relax, or clear space now.'
+        };
+    }
+    return {
+        label: 'BREAKING',
+        accent: 'rgba(255, 104, 118, 0.6)',
+        start: '#ff828e',
+        end: '#ff4f66',
+        text: '#ffe4e7',
+        hint: 'You are about to storm off.'
+    };
+}
+
+function getTaskTypeTheme(type) {
+    switch (type) {
+        case 'hold':
+            return {
+                label: 'HOLD',
+                fill: 'rgba(255, 209, 111, 0.16)',
+                stroke: 'rgba(255, 209, 111, 0.34)',
+                text: '#ffe9b5',
+                barStart: '#ffd77b',
+                barEnd: '#f0a85d'
+            };
+        case 'coverage':
+            return {
+                label: 'COVER',
+                fill: 'rgba(134, 212, 255, 0.16)',
+                stroke: 'rgba(134, 212, 255, 0.34)',
+                text: '#ddf4ff',
+                barStart: '#8fd8ff',
+                barEnd: '#4aa6ea'
+            };
+        default:
+            return {
+                label: 'FETCH',
+                fill: 'rgba(147, 239, 156, 0.14)',
+                stroke: 'rgba(147, 239, 156, 0.3)',
+                text: '#ddffe0',
+                barStart: '#93ef9c',
+                barEnd: '#53c477'
+            };
+    }
+}
+
+function drawModernHUD() {
+    ctx.save();
+
+    const dadCenterX = gameState.dad.x + gameState.dad.width / 2;
+    const dadCenterY = gameState.dad.y + gameState.dad.height / 2;
+    const roomKey = getRoomAt(dadCenterX, dadCenterY);
+    const roomLabel = roomKey && ROOMS[roomKey] ? ROOMS[roomKey].name : 'Open Yard';
+    const minutes = Math.floor(gameState.time / 60);
+    const seconds = Math.floor(gameState.time % 60);
+    const timeText = `${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
+    const overstimulationRatio = Math.min(gameState.overstimulation / MAX_OVERSTIMULATION, 1);
+    const sprintRatio = Math.max(0, Math.min(1, gameState.sprintergyLeft / gameState.maxSprintEnergy));
+    const barkRatio = gameState.barkCooldownMax > 0
+        ? Math.max(0, Math.min(1, 1 - (gameState.barkCooldown / gameState.barkCooldownMax)))
+        : 1;
+    const stressTone = getStressHudTone(gameState.overstimulation);
+    const playtestInset = playtestElements.panel && !playtestBot.panelCollapsed && window.innerWidth > 1100 ? 190 : 0;
+
+    const headerX = 18;
+    const headerY = 18;
+    const headerW = 286;
+    drawHudCard(headerX, headerY, headerW, 88, 'rgba(134, 212, 255, 0.34)');
+
+    ctx.textAlign = 'left';
+    ctx.textBaseline = 'top';
+    ctx.fillStyle = '#84d5ff';
+    ctx.font = '700 10px Consolas, "Lucida Console", monospace';
+    ctx.fillText('HOUSE STATUS', headerX + 18, headerY + 18);
+
+    ctx.fillStyle = '#f6fbff';
+    ctx.font = '700 28px Impact, Haettenschweiler, "Arial Narrow Bold", sans-serif';
+    ctx.fillText(`DAY ${gameState.day}`, headerX + 18, headerY + 32);
+
+    ctx.textAlign = 'right';
+    ctx.fillStyle = '#ffd16f';
+    ctx.font = '700 24px Impact, Haettenschweiler, "Arial Narrow Bold", sans-serif';
+    ctx.fillText(timeText, headerX + headerW - 18, headerY + 32);
+
+    ctx.textAlign = 'left';
+    ctx.fillStyle = '#b8cad8';
+    ctx.font = '600 12px "Trebuchet MS", "Segoe UI", sans-serif';
+    ctx.fillText(`Room: ${fitHudText(roomLabel, 140, ctx.font)}`, headerX + 18, headerY + 67);
+
+    ctx.textAlign = 'right';
+    ctx.fillText(`Done ${gameState.stats.tasksCompleted} | Active ${gameState.tasks.length}`, headerX + headerW - 18, headerY + 67);
+
+    if (DEBUG_MODE) {
+        drawHudPill(headerX + 178, headerY + 15, 'DEBUG', {
+            fill: 'rgba(255, 141, 132, 0.16)',
+            stroke: 'rgba(255, 141, 132, 0.34)',
+            textColor: '#ffe0dc',
+            height: 20,
+            paddingX: 8
+        });
+    }
+
+    if (gameState.notification) {
+        const noticeFont = '700 13px "Trebuchet MS", "Segoe UI", sans-serif';
+        const noticeText = fitHudText(gameState.notification.message, 344, noticeFont);
+        ctx.save();
+        ctx.font = noticeFont;
+        const noticeWidth = Math.max(250, Math.min(390, Math.ceil(ctx.measureText(noticeText).width) + 86));
+        ctx.restore();
+
+        const noticeX = (GAME_WIDTH - noticeWidth) / 2;
+        const noticeY = 18;
+        drawHudCard(noticeX, noticeY, noticeWidth, 54, 'rgba(255, 209, 111, 0.42)');
+        drawHudPill(noticeX + 18, noticeY + 15, 'LIVE EVENT', {
+            fill: 'rgba(255, 209, 111, 0.18)',
+            stroke: 'rgba(255, 209, 111, 0.4)',
+            textColor: '#ffefc7',
+            height: 20,
+            paddingX: 8
+        });
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillStyle = '#fff5dc';
+        ctx.font = noticeFont;
+        ctx.fillText(noticeText, noticeX + noticeWidth / 2, noticeY + 35);
+    }
+
+    const stressX = GAME_WIDTH - 286 - playtestInset;
+    const stressY = 18;
+    const stressW = 268;
+    drawHudCard(stressX, stressY, stressW, 108, stressTone.accent);
+
+    ctx.textAlign = 'left';
+    ctx.textBaseline = 'top';
+    ctx.fillStyle = stressTone.text;
+    ctx.font = '700 10px Consolas, "Lucida Console", monospace';
+    ctx.fillText('OVERSTIMULATION', stressX + 18, stressY + 18);
+
+    drawHudPill(stressX + 18, stressY + 34, stressTone.label, {
+        fill: 'rgba(255, 255, 255, 0.06)',
+        stroke: stressTone.accent,
+        textColor: stressTone.text,
+        height: 22,
+        paddingX: 9
+    });
+
+    ctx.textAlign = 'right';
+    ctx.fillStyle = '#fff7ef';
+    ctx.font = '700 30px Impact, Haettenschweiler, "Arial Narrow Bold", sans-serif';
+    ctx.fillText(`${Math.floor(overstimulationRatio * 100)}%`, stressX + stressW - 18, stressY + 28);
+
+    drawHudBar(stressX + 18, stressY + 66, stressW - 36, 14, overstimulationRatio, stressTone.start, stressTone.end);
+
+    ctx.textAlign = 'left';
+    ctx.fillStyle = '#b8cad8';
+    ctx.font = '600 12px "Trebuchet MS", "Segoe UI", sans-serif';
+    ctx.fillText(stressTone.hint, stressX + 18, stressY + 88);
+
+    ctx.textAlign = 'right';
+    ctx.fillText(`Peak ${Math.floor(gameState.stats.peakStimulation)}%`, stressX + stressW - 18, stressY + 88);
+
+    const tasksX = GAME_WIDTH - 324 - playtestInset;
+    const tasksY = 138;
+    const tasksW = 306;
+    const visibleTasks = Math.min(gameState.tasks.length, 5);
+    const taskItemH = 66;
+    const tasksH = visibleTasks > 0 ? 62 + visibleTasks * taskItemH : 118;
+    drawHudCard(tasksX, tasksY, tasksW, tasksH, 'rgba(134, 212, 255, 0.32)');
+
+    ctx.textAlign = 'left';
+    ctx.textBaseline = 'top';
+    ctx.fillStyle = '#84d5ff';
+    ctx.font = '700 10px Consolas, "Lucida Console", monospace';
+    ctx.fillText('TASK BOARD', tasksX + 18, tasksY + 18);
+
+    ctx.textAlign = 'right';
+    ctx.fillStyle = '#ffd16f';
+    ctx.font = '700 11px Consolas, "Lucida Console", monospace';
+    ctx.fillText(`${gameState.tasks.length} ACTIVE`, tasksX + tasksW - 18, tasksY + 18);
+
+    if (visibleTasks === 0) {
+        ctx.textAlign = 'left';
+        ctx.fillStyle = '#f5f9ff';
+        ctx.font = '700 17px Impact, Haettenschweiler, "Arial Narrow Bold", sans-serif';
+        ctx.fillText('House is briefly under control.', tasksX + 18, tasksY + 44);
+        ctx.fillStyle = '#b8cad8';
+        ctx.font = '600 12px "Trebuchet MS", "Segoe UI", sans-serif';
+        ctx.fillText('Use the breathing room to relax, move, or get coffee.', tasksX + 18, tasksY + 72);
+    }
+
+    let taskYPos = tasksY + 40;
+    for (let i = 0; i < visibleTasks; i++) {
+        const task = gameState.tasks[i];
+        const theme = getTaskTypeTheme(task.type);
+        const itemX = tasksX + 12;
+        const itemY = taskYPos;
+        const itemW = tasksW - 24;
+        const isHighlighted = gameState.selectedTaskId === task.id || i === 0;
+        const itemFill = isHighlighted ? 'rgba(255, 255, 255, 0.075)' : 'rgba(255, 255, 255, 0.04)';
+        const itemStroke = isHighlighted ? theme.stroke : 'rgba(255, 255, 255, 0.08)';
+
+        fillRoundedRect(itemX, itemY, itemW, taskItemH - 10, 16, itemFill);
+        strokeRoundedRect(itemX, itemY, itemW, taskItemH - 10, 16, itemStroke, 1);
+
+        ctx.textAlign = 'left';
+        ctx.textBaseline = 'top';
+        ctx.fillStyle = '#f5f9ff';
+        ctx.font = '700 13px "Trebuchet MS", "Segoe UI", sans-serif';
+        ctx.fillText(fitHudText(task.name, itemW - 28, ctx.font), itemX + 14, itemY + 10);
+
+        const pillWidth = drawHudPill(itemX + 14, itemY + 31, theme.label, {
+            fill: theme.fill,
+            stroke: theme.stroke,
+            textColor: theme.text,
+            height: 20,
+            paddingX: 8
+        });
+
+        ctx.fillStyle = '#afc2d3';
+        ctx.font = '600 11px Consolas, "Lucida Console", monospace';
+        ctx.fillText(
+            fitHudText(task.location, Math.max(60, itemW - pillWidth - 56), ctx.font),
+            itemX + 22 + pillWidth,
+            itemY + 35
+        );
+
+        if (task.type === 'fetch') {
+            ctx.fillStyle = '#9ddfaf';
+            ctx.font = '600 11px "Trebuchet MS", "Segoe UI", sans-serif';
+            ctx.fillText('Pick it up and clear it.', itemX + 14, itemY + 49);
+        } else {
+            const progressRatio = task.maxProgress > 0 ? task.progress / task.maxProgress : 0;
+            drawHudBar(itemX + 14, itemY + 47, itemW - 84, 8, progressRatio, theme.barStart, theme.barEnd);
+
+            ctx.textAlign = 'right';
+            ctx.fillStyle = theme.text;
+            ctx.font = '700 11px Consolas, "Lucida Console", monospace';
+            ctx.fillText(
+                `${Math.floor(task.progress)}/${task.maxProgress}`,
+                itemX + itemW - 14,
+                itemY + 43
+            );
+        }
+
+        taskYPos += taskItemH;
+    }
+
+    const statusX = 18;
+    const statusY = GAME_HEIGHT - 106;
+    const statusW = 430;
+    drawHudCard(statusX, statusY, statusW, 88, 'rgba(134, 212, 255, 0.28)');
+
+    ctx.textAlign = 'left';
+    ctx.textBaseline = 'top';
+    ctx.fillStyle = '#84d5ff';
+    ctx.font = '700 10px Consolas, "Lucida Console", monospace';
+    ctx.fillText('CURRENT STATE', statusX + 18, statusY + 18);
+
+    const chips = [
+        {
+            text: roomLabel.toUpperCase(),
+            options: {
+                fill: 'rgba(134, 212, 255, 0.12)',
+                stroke: 'rgba(134, 212, 255, 0.28)',
+                textColor: '#e0f6ff'
+            }
+        }
+    ];
+
+    if (gameState.coffeeBuff) {
+        chips.push({
+            text: `COFFEE ${Math.ceil(gameState.coffeeBuffTimer)}S`,
+            options: {
+                fill: 'rgba(255, 209, 111, 0.16)',
+                stroke: 'rgba(255, 209, 111, 0.34)',
+                textColor: '#fff0c8'
+            }
+        });
+    }
+    if (gameState.isRelaxing) {
+        chips.push({
+            text: 'RELAXING',
+            options: {
+                fill: 'rgba(134, 212, 255, 0.14)',
+                stroke: 'rgba(134, 212, 255, 0.32)',
+                textColor: '#dcf3ff'
+            }
+        });
+    }
+    if (gameState.isHidingInToilet) {
+        chips.push({
+            text: 'TOILET HIDE',
+            options: {
+                fill: 'rgba(255, 141, 132, 0.16)',
+                stroke: 'rgba(255, 141, 132, 0.34)',
+                textColor: '#ffe3df'
+            }
+        });
+    }
+    if (gameState.dad.carrying === 'MOWER') {
+        chips.push({
+            text: 'MOWER EQUIPPED',
+            options: {
+                fill: 'rgba(147, 239, 156, 0.16)',
+                stroke: 'rgba(147, 239, 156, 0.3)',
+                textColor: '#e1ffe4'
+            }
+        });
+    }
+
+    let chipX = statusX + 18;
+    let chipY = statusY + 36;
+    const chipRowLimit = statusX + statusW - 18;
+
+    for (const chip of chips) {
+        const chipWidth = drawHudPill(chipX, chipY, chip.text, chip.options);
+        chipX += chipWidth + 8;
+        if (chipX > chipRowLimit - 96) {
+            chipX = statusX + 18;
+            chipY += 28;
+        }
+    }
+
+    ctx.textAlign = 'left';
+    ctx.fillStyle = '#b8cad8';
+    ctx.font = '600 12px "Trebuchet MS", "Segoe UI", sans-serif';
+    ctx.fillText('Stand still to settle faster. Relax spots drain stress the fastest.', statusX + 18, statusY + 66);
+
+    const movementX = GAME_WIDTH - 248 - playtestInset;
+    const movementY = GAME_HEIGHT - 106;
+    const movementW = 230;
+    drawHudCard(movementX, movementY, movementW, 88, 'rgba(147, 239, 156, 0.3)');
+
+    ctx.textAlign = 'left';
+    ctx.textBaseline = 'top';
+    ctx.fillStyle = '#93ef9c';
+    ctx.font = '700 10px Consolas, "Lucida Console", monospace';
+    ctx.fillText('MOVEMENT', movementX + 18, movementY + 18);
+
+    ctx.fillStyle = '#f4fff5';
+    ctx.font = '700 12px "Trebuchet MS", "Segoe UI", sans-serif';
+    ctx.fillText(`Sprint ${Math.floor(sprintRatio * 100)}%`, movementX + 18, movementY + 37);
+    drawHudBar(movementX + 18, movementY + 53, movementW - 36, 12, sprintRatio, '#93ef9c', '#4dc976');
+
+    ctx.fillStyle = barkRatio >= 1 ? '#fff0ca' : '#ffd9d4';
+    ctx.font = '700 11px Consolas, "Lucida Console", monospace';
+    ctx.fillText(
+        gameState.barkCooldown <= 0 ? 'Bark ready' : `Bark cooling ${gameState.barkCooldown.toFixed(1)}s`,
+        movementX + 18,
+        movementY + 71
+    );
+    drawHudBar(movementX + 18, movementY + 79, movementW - 36, 7, barkRatio, '#ffd16f', '#ff8d84');
+
+    ctx.restore();
+}
 function drawHUD() {
+    drawModernHUD();
+    return;
+
     ctx.save();
 
     // === TOP-LEFT: Day & Time ===
