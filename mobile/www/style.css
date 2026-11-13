@@ -1,0 +1,28 @@
+* { box-sizing: border-box; -webkit-tap-highlight-color: transparent; user-select: none; -webkit-user-select: none; }
+html, body { margin: 0; height: 100%; background: #1a1420; overflow: hidden; font-family: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif; color: #f4ecd8; touch-action: none; }
+#c { position: fixed; inset: 0; width: 100%; height: 100%; display: block; image-rendering: pixelated; touch-action: none; }
+#hud { position: fixed; inset: 0; pointer-events: none; padding: max(8px, env(safe-area-inset-top)) max(10px, env(safe-area-inset-right)) 8px max(10px, env(safe-area-inset-left)); display: flex; justify-content: space-between; align-items: flex-start; gap: 10px; }
+#meter { background: rgba(20,14,28,.82); border: 2px solid #4a3a58; border-radius: 10px; padding: 6px 10px 7px; min-width: 150px; max-width: 42vw; }
+#meterlabel { font-size: 11px; letter-spacing: .08em; color: #c9bcd6; display: flex; justify-content: space-between; margin-bottom: 4px; }
+#meterbar { height: 12px; background: #2a2231; border-radius: 6px; overflow: hidden; border: 1px solid #5d4a6c; }
+#stressfill { height: 100%; width: 0; background: #6ec06e; transition: width .2s linear, background .3s; }
+#clock { margin-top: 5px; font-size: 13px; font-weight: 700; color: #f2d48a; }
+#tasks { display: flex; flex-direction: column; gap: 6px; align-items: flex-end; max-height: 90vh; overflow: hidden; }
+.chip { pointer-events: auto; display: flex; align-items: center; gap: 7px; padding: 8px 12px; min-height: 44px; background: rgba(20,14,28,.86); color: #f4ecd8; border: 2px solid #4a3a58; border-radius: 22px; font-size: 14px; font-weight: 600; font-family: inherit; }
+.chip .ic { font-size: 18px; }
+.chip.old { border-color: #e8a23a; } .chip.late { border-color: #e0453a; background: rgba(70,20,24,.9); animation: pulse 1s infinite; }
+@keyframes pulse { 50% { transform: scale(1.04); } }
+#toast { position: fixed; left: 50%; bottom: max(14px, env(safe-area-inset-bottom)); transform: translate(-50%, 20px); background: rgba(20,14,28,.9); border: 2px solid #5d4a6c; border-radius: 14px; padding: 9px 16px; font-size: 14px; opacity: 0; transition: opacity .25s, transform .25s; pointer-events: none; max-width: 80vw; text-align: center; }
+#toast.on { opacity: 1; transform: translate(-50%, 0); }
+#modal { position: fixed; inset: 0; display: none; align-items: center; justify-content: center; background: rgba(8,5,12,.72); z-index: 10; padding: 12px; }
+#modal.on { display: flex; }
+.card { display: flex; gap: 16px; background: #231a2c; border: 3px solid #6b5a78; border-radius: 16px; padding: 16px; max-width: 560px; width: 100%; box-shadow: 0 10px 40px rgba(0,0,0,.6); }
+.card img { width: 96px; height: 96px; border-radius: 12px; border: 2px solid #6b5a78; image-rendering: pixelated; flex: none; align-self: flex-start; }
+.card h2 { margin: 0 0 6px; color: #f2d48a; font-size: 21px; } .card p { margin: 0 0 12px; font-size: 15px; line-height: 1.4; color: #e3d9ee; }
+#mbuttons { display: flex; gap: 10px; flex-wrap: wrap; }
+#mbuttons button { font: 700 15px inherit; font-family: inherit; padding: 11px 18px; min-height: 44px; border-radius: 10px; border: 2px solid #8a7498; background: #3c2e4a; color: #f4ecd8; }
+#mbuttons button:active { background: #54406a; }
+#loading { position: fixed; inset: 0; display: flex; align-items: center; justify-content: center; background: #1a1420; z-index: 20; font-size: 18px; color: #f2d48a; }
+@media (max-height: 420px) { .card img { width: 72px; height: 72px; } .card h2 { font-size: 18px; } .card p { font-size: 13px; margin-bottom: 8px; } #toast { font-size: 13px; } }
+
+body.mini #hud, body.mini #toast { display: none; }
