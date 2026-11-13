@@ -1,7 +1,0 @@
-{
-  "appId": "com.pixel549.overstimulated",
-  "appName": "Overstimulated",
-  "webDir": "www",
-  "backgroundColor": "#1a1420",
-  "android": { "allowMixedContent": false }
-}
