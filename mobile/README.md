@@ -1,14 +1,22 @@
 # Overstimulated: mobile rebuild
 
-Tap-to-move rebuild of Overstimulated for phones (landscape), wrapped as an Android APK with Capacitor.
+Tap-to-move rebuild of Overstimulated for phones (landscape), wrapped as an Android APK.
 The original desktop game in the repo root is untouched.
 
 ## Play in a browser
 `npm run serve` then open http://127.0.0.1:8765/ (add `?autostart=1` to skip the intro).
 
-## Get the APK
-GitHub Actions builds it: Actions -> "Build Android APK" -> Run workflow (it also runs on every push under `mobile/`).
-Download `overstimulated-debug.apk` from the run's artifacts, or from the Releases page on your phone, and sideload it.
+## Build the APK
+No Gradle needed. A plain Java WebView shell in `android/` is built with aapt, javac, dx, zipalign and apksigner:
+
+```
+sudo apt install aapt dalvik-exchange zipalign apksigner default-jdk
+# android.jar for API 34, e.g. from github.com/Sable/android-platforms
+ANDROID_JAR=/path/to/android-34.jar android/build.sh     # -> android/build/Overstimulated.apk
+```
+The signing key (`android/overstimulated.jks`) is created on the first build and is git-ignored. Keep it: updates must be signed
+with the same key. Bump `versionCode` in `android/AndroidManifest.xml` for each update. The game is served to the WebView from
+a fake https origin so `fetch()` works.
 
 ## How it plays
 - Tap anywhere to walk; tap furniture, toys or mess to interact; the chore list top-right also walks you there.
