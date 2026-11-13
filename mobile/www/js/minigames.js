@@ -156,7 +156,151 @@ const Mini = (() => {
     };
   };
 
-  const MAKERS = { dishes: scrub, dogs: pour, toys: tidy, poop: scoop, baby: lullaby };
+  // ---- laundry: swipe each item in the direction of its arrow before the timer runs out
+  const laundry = done => {
+    const NEED = 7, LIMIT = 2.4, DIRS = [['→', 1, 0], ['←', -1, 0], ['↑', 0, -1], ['↓', 0, 1]], cols = ['#e86a6a', '#6aa6e8', '#e8c86a', '#7ac886', '#b08ae0'];
+    let n = 0, t = 0, mistakes = 0, start = null, dir = DIRS[0], col = cols[0], shake = 0, msg = '', msgT = 0, flyX = 0, flyY = 0, fly = 0;
+    const next = () => { dir = DIRS[Math.floor(rnd(0, 4))]; col = cols[Math.floor(rnd(0, cols.length))]; t = 0; };
+    const miss = m => { mistakes++; shake = .3; msg = m; msgT = .6; t = 0; if (mistakes >= 4) done(false, 0); };
+    next();
+    return {
+      title: 'Fold the laundry', hint: 'Swipe each item the way its arrow points',
+      pointer(ty, x, y) {
+        if (ty === 'down') start = { x, y };
+        else if (ty === 'up' && start) {
+          const dx = x - start.x, dy = y - start.y; start = null;
+          if (Math.hypot(dx, dy) < 45) return;
+          const d = Math.abs(dx) > Math.abs(dy) ? (dx > 0 ? DIRS[0] : DIRS[1]) : (dy > 0 ? DIRS[3] : DIRS[2]);
+          if (d === dir) { n++; fly = .25; flyX = d[1] * 260; flyY = d[2] * 160; if (n >= NEED) done(true, 1); else next(); } else miss('Wrong way!');
+        }
+      },
+      update(dt) { t += dt; shake -= dt; msgT -= dt; fly -= dt; if (t > LIMIT) miss('Too slow…'); },
+      draw(c) {
+        const sx = shake > 0 ? Math.sin(shake * 90) * 6 : 0;
+        c.fillStyle = col; c.fillRect(220 + sx, 120, 200, 150); c.fillStyle = 'rgba(255,255,255,.18)'; c.fillRect(220 + sx, 120, 200, 40);
+        c.strokeStyle = '#201818'; c.lineWidth = 3; c.strokeRect(220 + sx, 120, 200, 150);
+        c.fillStyle = '#fff'; c.font = 'bold 74px system-ui'; c.fillText(dir[0], 320 + sx, 222);
+        bar(c, 220, 288, 200, 10, 1 - t / LIMIT, t > LIMIT * .7 ? '#ff7a6a' : '#7de08d');
+        for (let k = 0; k < NEED; k++) { c.fillStyle = k < n ? '#7de08d' : '#3a3040'; c.beginPath(); c.arc(250 + k * 22, 328, 7, 0, 7); c.fill(); }
+        for (let k = 0; k < 4; k++) { c.fillStyle = k < mistakes ? '#ff7a6a' : '#3a3040'; c.beginPath(); c.arc(540 + k * 18, 328, 6, 0, 7); c.fill(); }
+        if (msgT > 0) { c.fillStyle = '#ff9a8a'; c.font = 'bold 22px system-ui'; c.fillText(msg, 320, 100); }
+      },
+    };
+  };
+
+  // ---- cooking: tap each pan while its needle sits in the green
+  const cook = done => {
+    const pans = [{ x: 140 }, { x: 320 }, { x: 500 }].map((p, k) => ({ ...p, y: 205, v: rnd(0, 1), dir: 1, sp: 0.55 + k * 0.12, flips: 0, flash: 0, ok: false }));
+    const ZA = 0.56, ZB = 0.74; let burns = 0, msg = '', msgT = 0; const NEED = 2;
+    return {
+      title: 'Cook dinner', hint: 'Tap a pan when its needle is in the green',
+      pointer(t, x, y) {
+        if (t !== 'down') return;
+        let best = null, bd = 95; for (const p of pans) if (p.flips < NEED) { const d = Math.hypot(p.x - x, p.y - y); if (d < bd) { bd = d; best = p; } }
+        if (!best) return;
+        if (best.v >= ZA && best.v <= ZB) { best.flips++; best.flash = .4; msg = 'Flip!'; msgT = .6; if (pans.every(p => p.flips >= NEED)) done(true, 1); }
+        else { burns++; best.flash = -.4; msg = 'Burnt!'; msgT = .6; if (burns >= 3) done(false, 0); }
+      },
+      update(dt) { for (const p of pans) { if (p.flips >= NEED) continue; p.v += p.dir * p.sp * dt; if (p.v > 1) { p.v = 1; p.dir = -1; } if (p.v < 0) { p.v = 0; p.dir = 1; } p.flash -= Math.sign(p.flash) * dt; if (Math.abs(p.flash) < .02) p.flash = 0; } msgT -= dt; },
+      draw(c) {
+        pans.forEach(p => {
+          c.fillStyle = p.flash > 0 ? '#5a7a4a' : p.flash < 0 ? '#8a3a2a' : '#34303a'; c.beginPath(); c.arc(p.x, p.y, 62, 0, 7); c.fill(); c.strokeStyle = '#6a6070'; c.lineWidth = 5; c.stroke();
+          c.fillStyle = '#4a4050'; c.fillRect(p.x + 60, p.y - 7, 56, 14);
+          c.fillStyle = p.flips >= NEED ? '#c88a4a' : '#d8b06a'; c.beginPath(); c.ellipse(p.x, p.y, 34, 24, 0, 0, 7); c.fill();
+          if (p.flips >= NEED) { c.fillStyle = '#7de08d'; c.font = 'bold 34px system-ui'; c.fillText('✓', p.x, p.y + 12); return; }
+          c.fillStyle = '#2a2231'; c.fillRect(p.x - 60, p.y + 82, 120, 12); c.fillStyle = 'rgba(110,220,130,.7)'; c.fillRect(p.x - 60 + ZA * 120, p.y + 82, (ZB - ZA) * 120, 12);
+          c.fillStyle = '#f2d48a'; c.fillRect(p.x - 60 + p.v * 120 - 2, p.y + 77, 4, 22);
+          for (let k = 0; k < NEED; k++) { c.fillStyle = k < p.flips ? '#7de08d' : '#3a3040'; c.beginPath(); c.arc(p.x - 10 + k * 20, p.y - 80, 6, 0, 7); c.fill(); }
+        });
+        for (let k = 0; k < 3; k++) { c.fillStyle = k < burns ? '#ff7a6a' : '#3a3040'; c.beginPath(); c.arc(290 + k * 30, 330, 8, 0, 7); c.fill(); }
+        if (msgT > 0) { c.fillStyle = msg === 'Flip!' ? '#7de08d' : '#ff9a8a'; c.font = 'bold 24px system-ui'; c.fillText(msg, 320, 100); }
+      },
+    };
+  };
+
+  // ---- eggs: tap the eggs, leave the broody chooks alone
+  const eggs = done => {
+    const slots = []; for (let r = 0; r < 2; r++) for (let q = 0; q < 4; q++) slots.push({ x: 120 + q * 133, y: 155 + r * 100, item: null });
+    let got = 0, pecks = 0, missed = 0, next = .4, msg = '', msgT = 0; const NEED = 8, MAXMISS = 4;
+    return {
+      title: 'Collect the eggs', hint: 'Tap the eggs. Leave the chooks alone!',
+      pointer(t, x, y) {
+        if (t !== 'down') return;
+        for (const s of slots) if (s.item && Math.hypot(s.x - x, s.y - y) < 48) {
+          if (s.item.egg) { got++; msg = 'Egg!'; msgT = .4; if (got >= NEED) done(true, 1); } else { pecks++; msg = 'PECK!'; msgT = .6; if (pecks >= 3) done(false, 0); }
+          s.item = null; return;
+        }
+      },
+      update(dt) {
+        next -= dt; msgT -= dt;
+        if (next <= 0) { const free = slots.filter(s => !s.item); if (free.length) { const s = free[Math.floor(rnd(0, free.length))]; s.item = { egg: Math.random() < .68, l: 1.7, max: 1.7 }; } next = rnd(.55, .9); }
+        for (const s of slots) if (s.item) { s.item.l -= dt; if (s.item.l <= 0) { if (s.item.egg) { missed++; if (missed >= MAXMISS) done(false, 0); } s.item = null; } }
+      },
+      draw(c) {
+        for (const s of slots) {
+          c.fillStyle = '#8a6a3a'; c.beginPath(); c.ellipse(s.x, s.y + 14, 52, 26, 0, 0, 7); c.fill(); c.fillStyle = '#c8a45a'; c.beginPath(); c.ellipse(s.x, s.y + 8, 40, 18, 0, 0, 7); c.fill();
+          if (!s.item) continue;
+          if (s.item.egg) { c.fillStyle = '#f8f0dc'; c.beginPath(); c.ellipse(s.x, s.y - 4, 17, 22, 0, 0, 7); c.fill(); c.strokeStyle = '#8a7a5a'; c.lineWidth = 2; c.stroke(); }
+          else { c.fillStyle = '#f4f4f4'; c.beginPath(); c.ellipse(s.x, s.y - 4, 30, 24, 0, 0, 7); c.fill(); c.fillStyle = '#d84a3a'; c.fillRect(s.x - 6, s.y - 34, 12, 10); c.fillStyle = '#e8a020'; c.beginPath(); c.moveTo(s.x + 26, s.y - 8); c.lineTo(s.x + 40, s.y - 3); c.lineTo(s.x + 26, s.y + 2); c.fill(); c.fillStyle = '#201818'; c.fillRect(s.x + 14, s.y - 14, 4, 4); }
+          c.strokeStyle = s.item.egg ? 'rgba(242,212,138,.9)' : 'rgba(255,110,90,.9)'; c.lineWidth = 3; c.beginPath(); c.arc(s.x, s.y - 4, 44, -1.57, -1.57 + 6.283 * (s.item.l / s.item.max)); c.stroke();
+        }
+        c.fillStyle = '#b8aebf'; c.font = '14px system-ui'; c.fillText(`Eggs ${got} / ${NEED}     Missed ${missed} / ${MAXMISS}     Pecks ${pecks} / 3`, 320, 336);
+        if (msgT > 0) { c.fillStyle = msg === 'Egg!' ? '#7de08d' : '#ff9a8a'; c.font = 'bold 24px system-ui'; c.fillText(msg, 320, 100); }
+      },
+    };
+  };
+
+  // ---- Jake's music: hold the dial inside the (drifting) green band while the bass kicks it around
+  const music = done => {
+    let v = 0.95, drag = false, hold = 0, t = 0, kick = 0, total = 0; const NEED = 3, LIMIT = 22;
+    const zone = () => 0.3 + 0.12 * Math.sin(t * 0.7) + 0.05 * Math.sin(t * 1.9);
+    return {
+      title: 'Turn Jake’s music down', hint: 'Drag the dial into the green and hold it there',
+      pointer(ty, x, y) { if (ty === 'down') drag = true; if (ty === 'up') drag = false; if (drag && ty !== 'up') v = Math.max(0, Math.min(1, (300 - y) / 190 + 0.0 + 0)); },
+      update(dt) {
+        t += dt; total += dt; kick -= dt; if (kick <= -0.9) kick = .25;
+        const z = zone(), eff = v + (kick > 0 ? 0.07 * Math.sin(kick * 40) : 0);
+        if (Math.abs(eff - z) < 0.075) hold += dt; else hold = Math.max(0, hold - dt * 1.5);
+        if (hold >= NEED) done(true, 1); else if (total > LIMIT) done(false, 0);
+      },
+      draw(c) {
+        const z = zone(), top = 110, h = 190, y = k => top + (1 - k) * h + (300 - top - h);
+        c.fillStyle = '#2a2231'; c.fillRect(300, 110, 40, 190); c.fillStyle = 'rgba(110,220,130,.6)'; c.fillRect(300, 300 - (z + .075) * 190 - 0, 40, .15 * 190);
+        const eff = v + (kick > 0 ? 0.07 * Math.sin(kick * 40) : 0);
+        c.fillStyle = '#f2d48a'; c.fillRect(288, 300 - Math.max(0, Math.min(1, eff)) * 190 - 8, 64, 16); c.strokeStyle = '#201818'; c.lineWidth = 2; c.strokeRect(288, 300 - Math.max(0, Math.min(1, eff)) * 190 - 8, 64, 16);
+        c.fillStyle = '#b8aebf'; c.font = '28px system-ui'; c.fillText('🔊', 240, 140); c.fillText('🔈', 240, 296);
+        bar(c, 420, 190, 140, 12, hold / NEED, '#7de08d'); c.font = '14px system-ui'; c.fillText('hold it…', 490, 224);
+        if (kick > 0) { c.fillStyle = '#ff9a8a'; c.font = 'bold 22px system-ui'; c.fillText('BOOM', 490, 160); }
+        bar(c, 220, 334, 200, 6, 1 - total / LIMIT, '#8a7a9a');
+      },
+    };
+  };
+
+  // ---- make the bed: rub the wrinkles out of the sheet
+  const bed = done => {
+    const wr = Array.from({ length: 6 }, (_, k) => ({ x: 230 + (k % 3) * 90 + rnd(-12, 12), y: 150 + Math.floor(k / 3) * 90 + rnd(-10, 10), p: 0, a: rnd(-.4, .4) }));
+    let last = null;
+    return {
+      title: 'Make the bed', hint: 'Rub each wrinkle out of the sheet',
+      pointer(t, x, y) {
+        if (t === 'up') { last = null; return; }
+        if (last) { const mv = Math.hypot(x - last.x, y - last.y); for (const w of wr) if (w.p < 1 && Math.hypot(x - w.x, y - w.y) < 46) { w.p = Math.min(1, w.p + mv * .0045); } if (wr.every(w => w.p >= 1)) done(true, 1); }
+        last = { x, y };
+      },
+      update() {},
+      draw(c) {
+        c.fillStyle = '#6a8ac0'; c.fillRect(180, 100, 280, 215); c.fillStyle = '#e8e4ee'; c.fillRect(180, 100, 280, 38); c.strokeStyle = '#201818'; c.lineWidth = 3; c.strokeRect(180, 100, 280, 215);
+        for (const w of wr) {
+          c.save(); c.translate(w.x, w.y); c.rotate(w.a); c.globalAlpha = 1 - w.p;
+          c.strokeStyle = '#3a4f7a'; c.lineWidth = 4; c.beginPath(); c.moveTo(-34, 0); c.quadraticCurveTo(-12, -14, 0, 0); c.quadraticCurveTo(12, 14, 34, 0); c.stroke(); c.restore();
+          if (w.p >= 1) { c.fillStyle = '#7de08d'; c.font = 'bold 22px system-ui'; c.fillText('✓', w.x, w.y + 8); }
+        }
+        c.fillStyle = '#b8aebf'; c.font = '14px system-ui'; c.fillText(`${wr.filter(w => w.p >= 1).length} / ${wr.length} smoothed`, 320, 340);
+      },
+    };
+  };
+
+  const MAKERS = { dishes: scrub, dogs: pour, toys: tidy, poop: scoop, baby: lullaby, laundry, cook, eggs, music, bed };
   const fit = (W, H) => { const k = Math.min(W / VW, H / VH); return { k, ox: (W - VW * k) / 2, oy: (H - VH * k) / 2 }; };
 
   return {

@@ -13,9 +13,15 @@ const Nav = (() => {
   }
   const edgeKey = (ax, ay, bx, by) => ax !== bx ? 'v:' + Math.max(ax, bx) + ':' + ay : 'h:' + ax + ':' + Math.max(ay, by);
   for (const d of DOORS) {
-    d.key = d.o === 'v' ? 'v:' + d.at + ':' + d.i : 'h:' + d.i + ':' + d.at; doors.set(d.key, d); d.t = 0;
-    // the two tiles a door joins, a = west/north side, b = east/south side
-    if (d.o === 'v') { d.a = { x: d.at - 1, y: d.i }; d.b = { x: d.at, y: d.i }; } else { d.a = { x: d.i, y: d.at - 1 }; d.b = { x: d.i, y: d.at }; }
+    d.w = d.w || 1; d.t = 0; d.pairs = [];
+    d.key = d.o === 'v' ? 'v:' + d.at + ':' + d.i : 'h:' + d.i + ':' + d.at;
+    for (let k = 0; k < d.w; k++) {
+      const key = d.o === 'v' ? 'v:' + d.at + ':' + (d.i + k) : 'h:' + (d.i + k) + ':' + d.at;
+      doors.set(key, d);
+      // the two tiles this stretch of the door joins, a = west/north side, b = east/south side
+      d.pairs.push(d.o === 'v' ? { a: { x: d.at - 1, y: d.i + k }, b: { x: d.at, y: d.i + k } } : { a: { x: d.i + k, y: d.at - 1 }, b: { x: d.i + k, y: d.at } });
+    }
+    d.a = d.pairs[0].a; d.b = d.pairs[0].b;
   }
 
   const inb = (x, y) => x >= 0 && y >= 0 && x < MAPW && y < MAPH;

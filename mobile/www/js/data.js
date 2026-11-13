@@ -33,26 +33,26 @@ const ROOM_ORDER = ['DOG_YARD', 'CHICKEN_YARD', 'SHED', 'CHICKEN_RUN', 'CHICKEN_
 // o:'h' = in a horizontal wall at y=at, on column i (between (i,at-1) and (i,at)). Closed doors stop dogs, chickens and the baby;
 // Dad, Wife and Jake open them as they walk through. gate:true draws a fence gate instead of a door.
 const DOORS = [
-  { id: 'ensuite',   name: 'Ensuite door',        o: 'h', at: 11, i: 6,  open: true },
-  { id: 'master',    name: 'Master bedroom door', o: 'v', at: 10, i: 16, open: true },
-  { id: 'reading',   name: 'Reading room door',   o: 'h', at: 15, i: 12, open: true },
-  { id: 'kitchenS',  name: 'Kitchen door',        o: 'h', at: 15, i: 18, open: true },
-  { id: 'baby',      name: "Baby's room door",    o: 'h', at: 17, i: 14, open: true },
-  { id: 'hallL',     name: 'Hallway door',        o: 'v', at: 21, i: 15, open: true },
-  { id: 'kitchenE',  name: 'Kitchen archway',     o: 'v', at: 21, i: 9,  open: true },
-  { id: 'hallR',     name: 'Hallway door',        o: 'v', at: 33, i: 16, open: true },
-  { id: 'jake',      name: "Jake's door",         o: 'h', at: 16, i: 36, open: true },
-  { id: 'office',    name: 'Office door',         o: 'h', at: 18, i: 35, open: true },
-  { id: 'spare',     name: 'Spare room door',     o: 'h', at: 18, i: 39, open: true },
-  { id: 'stripDoor', name: 'Side door',           o: 'v', at: 41, i: 17, open: false },
-  { id: 'patio',     name: 'Patio door',          o: 'v', at: 33, i: 8,  open: false },
-  { id: 'dogPatioL', name: 'Living room back door', o: 'h', at: 22, i: 26, open: true },
-  { id: 'dogPatioM', name: 'Master back door',    o: 'h', at: 22, i: 6,  open: false },
-  { id: 'shed',      name: 'Shed door',           o: 'h', at: 6,  i: 50, open: true },
-  { id: 'runGate',   name: 'Chicken run gate',    o: 'v', at: 47, i: 22, open: false, gate: true },
-  { id: 'coop',      name: 'Coop hatch',          o: 'h', at: 28, i: 51, open: false, gate: true },
-  { id: 'yardTop',   name: 'Yard gate (north)',   o: 'v', at: 33, i: 2,  open: false, gate: true },
-  { id: 'yardBot',   name: 'Yard gate (south)',   o: 'v', at: 33, i: 30, open: false, gate: true },
+  { id: 'ensuite',   name: 'Ensuite door',        o: 'h', at: 11, i: 6,  w: 2, open: true },
+  { id: 'master',    name: 'Master bedroom door', o: 'v', at: 10, i: 15, w: 2, open: true },
+  { id: 'reading',   name: 'Reading room door',   o: 'h', at: 15, i: 12, w: 2, open: true },
+  { id: 'kitchenS',  name: 'Kitchen door',        o: 'h', at: 15, i: 18, w: 2, open: true },
+  { id: 'baby',      name: "Baby's room door",    o: 'h', at: 17, i: 14, w: 2, open: true },
+  { id: 'hallL',     name: 'Hallway door',        o: 'v', at: 21, i: 15, w: 2, open: true },
+  { id: 'kitchenE',  name: 'Kitchen archway',     o: 'v', at: 21, i: 8,  w: 2, open: true },
+  { id: 'hallR',     name: 'Hallway door',        o: 'v', at: 33, i: 16, w: 2, open: true },
+  { id: 'jake',      name: "Jake's door",         o: 'h', at: 16, i: 36, w: 2, open: true },
+  { id: 'office',    name: 'Office door',         o: 'h', at: 18, i: 35, w: 2, open: true },
+  { id: 'spare',     name: 'Spare room door',     o: 'h', at: 18, i: 38, w: 2, open: true },
+  { id: 'stripDoor', name: 'Side door',           o: 'v', at: 41, i: 16, w: 2, open: false },
+  { id: 'patio',     name: 'Patio door',          o: 'v', at: 33, i: 8,  w: 2, open: false },
+  { id: 'dogPatioL', name: 'Living room back door', o: 'h', at: 22, i: 26, w: 2, open: true },
+  { id: 'dogPatioM', name: 'Master back door',    o: 'h', at: 22, i: 6,  w: 2, open: false },
+  { id: 'shed',      name: 'Shed door',           o: 'h', at: 6,  i: 50, w: 2, open: true },
+  { id: 'runGate',   name: 'Chicken run gate',    o: 'v', at: 47, i: 22, w: 2, open: false, gate: true },
+  { id: 'coop',      name: 'Coop hatch',          o: 'h', at: 28, i: 51, w: 2, open: false, gate: true },
+  { id: 'yardTop',   name: 'Yard gate (north)',   o: 'v', at: 33, i: 2,  w: 3, open: false, gate: true },
+  { id: 'yardBot',   name: 'Yard gate (south)',   o: 'v', at: 33, i: 30, w: 3, open: false, gate: true },
 ];
 
 // furniture: [sprite, room, dx, dy (tiles, sprite top-left), opts]
@@ -72,7 +72,7 @@ const FURN = [
   ['coffee_table', 'LIVING_ROOM', 3.0, 11.0, {}],
   // kitchen
   ['fridge', 'KITCHEN', 4.9, 0.0, { id: 'fridge' }],
-  ['oven', 'KITCHEN', 3.2, 0.6, {}],
+  ['oven', 'KITCHEN', 3.2, 0.6, { id: 'oven' }],
   ['sink', 'KITCHEN', 1.2, 0.9, { id: 'sink' }],
   ['coffee_table', 'KITCHEN', 1.4, 4.4, {}],
   // reading room (and the dogs' favourite bed)
@@ -80,7 +80,7 @@ const FURN = [
   ['lamp', 'READING', 3.5, 0.9, {}],
   ['ottoman', 'READING', 2.6, 5.4, {}],
   // baby's room
-  ['dresser', 'BABYS_ROOM', 0.8, 0.5, {}],
+  ['dresser', 'BABYS_ROOM', 0.8, 0.5, { id: 'dresserB' }],
   ['bed_green', 'BABYS_ROOM', 8.2, 0.4, { id: 'cot' }],
   ['rug', 'BABYS_ROOM', 4.3, 2.2, { floor: true }],
   // master bedroom and ensuite
@@ -92,14 +92,14 @@ const FURN = [
   ['vanity', 'ENSUITE', 3.6, 0.5, {}],
   // jake's room, office, spare room
   ['bed_green', 'HOUSEMATE', 0.8, 0.5, {}],
-  ['desk', 'HOUSEMATE', 4.6, 0.4, {}],
+  ['desk', 'HOUSEMATE', 4.6, 0.4, { id: 'jakedesk' }],
   ['lamp', 'HOUSEMATE', 7.1, 0.9, {}],
   ['desk', 'OFFICE', 0.2, 0.3, {}],
   ['office_chair', 'OFFICE', 0.8, 1.5, {}],
   ['bed_brown', 'SPARE', 0.3, 0.4, {}],
   ['chest', 'SPARE', 2.4, 2.4, { id: 'toybox' }],
   // outside
-  ['mower', 'DOG_YARD', 10, 10, {}],
+  ['mower', 'DOG_YARD', 10, 10, { id: 'mower' }],
   ['bowl_a', 'DOG_PATIO', 24.2, 0.9, { id: 'bowls' }],
   ['bowl_b', 'DOG_PATIO', 25.5, 0.9, {}],
   ['ottoman', 'DOG_PATIO', 3.0, 0.8, {}],
@@ -111,6 +111,7 @@ const FURN = [
 const SPOTS = {
   toyLiving: { room: 'LIVING_ROOM', dx: 6, dy: 9 },
   toyBaby:   { room: 'BABYS_ROOM',  dx: 4, dy: 3 },
+  coopEgg: { room: 'CHICKEN_COOP', dx: 1, dy: 1 },
   patioPoop: [ { room: 'PATIO_MAIN', dx: 2, dy: 2 }, { room: 'PATIO_MAIN', dx: 5, dy: 3 }, { room: 'PATIO_MAIN', dx: 7, dy: 1 } ],
 };
 const WANDER = {

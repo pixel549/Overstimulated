@@ -131,11 +131,16 @@
 
   // ---------------------------------------------------------------- tasks
   const TASKS = {
-    dishes: { icon: '🍽️', label: 'Dishes', spot: 'sink', who: 'wife', line: 'Those dishes are not going to wash themselves.' },
-    dogs:   { icon: '🐕', label: 'Feed the dogs', spot: 'bowls', who: 'piper', line: '*stares meaningfully at the empty bowls*' },
-    toys:   { icon: '🧸', label: 'Tidy toys', spot: 'toys', who: 'baby', line: 'Ba ba ba! *flings a toy*' },
-    poop:   { icon: '💩', label: 'Patio mess', spot: 'poop', who: 'jake', line: 'Chickens. On the patio. Again.' },
-    baby:   { icon: '👶', label: 'Settle baby', spot: 'cot', who: 'baby', line: 'WAHHHH!' },
+    dishes:  { icon: '🍽️', label: 'Dishes', spot: 'sink', who: 'wife', line: 'Those dishes are not going to wash themselves.' },
+    dogs:    { icon: '🐕', label: 'Feed the dogs', spot: 'bowls', who: 'piper', line: '*stares meaningfully at the empty bowls*' },
+    toys:    { icon: '🧸', label: 'Tidy toys', spot: 'toys', who: 'baby', line: 'Ba ba ba! *flings a toy*' },
+    poop:    { icon: '💩', label: 'Patio mess', spot: 'poop', who: 'jake', line: 'Chickens. On the patio. Again.' },
+    baby:    { icon: '👶', label: 'Settle baby', spot: 'cot', who: 'baby', line: 'WAHHHH!' },
+    laundry: { icon: '🧺', label: 'Fold laundry', spot: 'dresserB', who: 'wife', line: 'The washing basket has become a mountain.' },
+    cook:    { icon: '🍳', label: 'Cook dinner', spot: 'oven', who: 'wife', line: 'Is dinner happening, or are we ordering?' },
+    eggs:    { icon: '🥚', label: 'Collect eggs', spot: 'eggs', who: 'jake', line: 'The chooks have been busy. Eggs everywhere.' },
+    music:   { icon: '🔊', label: 'Jake’s music', spot: 'jakedesk', who: 'jake', line: '♪ BASS INTENSIFIES ♪' },
+    bed:     { icon: '🛏️', label: 'Make the bed', spot: 'bed', who: 'wife', line: 'Nobody made the bed. Again.' },
   };
   function addTask(type, quiet) {
     if (S.tasks.some(t => t.type === type)) { S.stress = Math.min(100, S.stress + 2); return; }
@@ -146,6 +151,8 @@
       S.ents.push({ k: 'toy_c', task: 'toys', tx: rb.x + b.dx, ty: rb.y + b.dy });
     } else if (type === 'poop') {
       SPOTS.patioPoop.forEach(p => S.ents.push({ k: 'poop', task: 'poop', tx: ROOMS[p.room].x + p.dx, ty: ROOMS[p.room].y + p.dy }));
+    } else if (type === 'eggs') {
+      const e = SPOTS.coopEgg; S.ents.push({ k: null, emoji: '🥚', task: 'eggs', tx: ROOMS[e.room].x + e.dx, ty: ROOMS[e.room].y + e.dy });
     }
     S.tasks.push(task);
     if (!quiet) say(task.who, task.line, 3.4);
@@ -157,7 +164,7 @@
     renderHUD();
   }
   function taskTarget(type) {
-    if (type === 'toys' || type === 'poop') {
+    if (type === 'toys' || type === 'poop' || type === 'eggs') {
       const list = S.ents.filter(e => e.task === type); if (!list.length) return null;
       const d = tileNow(dad); list.sort((a, b) => Math.hypot(a.tx - d.x, a.ty - d.y) - Math.hypot(b.tx - d.x, b.ty - d.y));
       return { tx: list[0].tx, ty: list[0].ty, exact: true };
@@ -181,9 +188,9 @@
     Mini.start(type, (ok, q) => {
       S.mode = 'play'; document.body.classList.remove('mini');
       if (ok) {
-        const info = TASKS[type]; S.doneCount++; S.stress = Math.max(0, S.stress - (10 + 5 * (q || 0)));
+        const info = TASKS[type]; S.doneCount++; S.stress = Math.max(0, S.stress - (9 + 4 * (q || 0)));
         removeTask(type); say(dad, pick(['Sorted.', 'One down.', 'Right. Done.', 'There. Happy?']), 2); if (navigator.vibrate) try { navigator.vibrate(30); } catch (e) {}
-      } else { S.failCount++; S.stress = Math.min(100, S.stress + 8); say(dad, 'Well. That went badly.', 2.4); }
+      } else { S.failCount++; S.stress = Math.min(100, S.stress + 10); say(dad, 'Well. That went badly.', 2.4); }
     });
   }
 
@@ -191,7 +198,8 @@
   function interact(f) {
     const st = standTileFor(f); if (!st) return;
     const go = fn => { if (setPath(dad, st.x, st.y)) dad.onArrive = fn; };
-    const id = f.id;
+    const id = f.id, pending = S.tasks.find(t => t.spot === id);
+    if (pending) { goTask(pending.type); return; }
     if (['sofa', 'armchair', 'armchair2', 'armchair3', 'bed'].includes(id)) go(() => { S.mode = 'relax'; dad.dir = 'up'; say(dad, 'Ahh. (tap to get up)', 3, 'think'); });
     else if (id === 'toilet') { if (S.hideCD > 0) { say(dad, 'Not again so soon… give it a minute.', 2.4, 'think'); return; } go(() => { S.mode = 'hide'; doorById('ensuite').open = false; say(dad, 'Door locked. Breathe. (tap to come out)', 3.5, 'think'); }); }
     else {
@@ -217,21 +225,21 @@
   }
   // ---------------------------------------------------------------- doors
   function doorRect(d) {
-    return d.o === 'v' ? { x0: d.at * T - 11, x1: d.at * T + 11, y0: d.i * T, y1: d.i * T + T } : { x0: d.i * T, x1: d.i * T + T, y0: d.at * T - 12, y1: d.at * T + 14 };
+    return d.o === 'v' ? { x0: d.at * T - 12, x1: d.at * T + 12, y0: d.i * T, y1: (d.i + d.w) * T } : { x0: d.i * T, x1: (d.i + d.w) * T, y0: d.at * T - 12, y1: d.at * T + 16 };
   }
   // Dad walks to whichever side of the door he can reach without opening anything, then flips it.
   function useDoor(d) {
-    const me = tileNow(dad); let best = null, bl = 1e9;
+    const me = tileNow(dad); let best = null, bestPr = null, bl = 1e9;
     for (const strict of [false, true]) {
-      for (const c of [d.a, d.b]) {
-        if (Nav.isSolid(c.x, c.y)) continue;
+      for (const pr of d.pairs) for (const side of ['a', 'b']) {
+        const c = pr[side]; if (Nav.isSolid(c.x, c.y)) continue;
         const p = Nav.findPath(me.x, me.y, c.x, c.y, strict); if (!p) continue;
-        if (p.length < bl) { bl = p.length; best = c; }
+        if (p.length < bl) { bl = p.length; best = c; bestPr = pr; }
       }
       if (best) break;
     }
     if (!best) return;
-    const other = best === d.a ? d.b : d.a;
+    const other = bestPr.a === best ? bestPr.b : bestPr.a;
     if (setPath(dad, best.x, best.y)) dad.onArrive = () => {
       d.open = !d.open; d.by = null;
       const dx = other.x - best.x, dy = other.y - best.y; dad.dir = dx ? (dx > 0 ? 'right' : 'left') : (dy > 0 ? 'down' : 'up');
@@ -256,20 +264,35 @@
   }
 
   // ---------------------------------------------------------------- timeline & stress
-  const TIMELINES = {
-    1: [[0, 'dishes'], [3, 'toys'], [28, 'poop'], [55, 'dogs'], [85, 'baby'], [120, 'dishes'], [140, 'poop'], [165, 'toys'], [195, 'dogs'], [225, 'baby'], [250, 'poop']],
-    2: [[0, 'dishes'], [2, 'toys'], [3, 'dogs'], [20, 'poop'], [40, 'baby'], [70, 'dishes'], [90, 'poop'], [110, 'toys'], [130, 'baby'], [150, 'dogs'], [175, 'dishes'], [195, 'poop'], [215, 'baby'], [240, 'toys'], [262, 'dogs']],
-  };
+  // A shuffled bag keeps the chore mix varied: every type shows up before any repeats. Day 2 comes thicker and faster.
+  function buildTimeline(day) {
+    const types = Object.keys(TASKS), out = []; let bag = [], t = 0, last = '';
+    const gap = day === 1 ? [16, 24] : [10, 16], first = day === 1 ? ['dishes', 'toys'] : ['dishes', 'toys', 'dogs'];
+    first.forEach((ty, k) => out.push([k * 3, ty]));
+    t = first.length * 3 + 8;
+    while (t < DAY_LEN - 25) {
+      if (!bag.length) bag = types.slice().sort(() => Math.random() - .5);
+      let ty = bag.pop(); if (ty === last && bag.length) { const alt = bag.pop(); bag.push(ty); ty = alt; }
+      out.push([t, ty]); last = ty; t += rnd(gap[0], gap[1]);
+    }
+    return out;
+  }
+  // Stress grows faster the more is waiting, and every chore left sitting makes it worse (compounding).
+  function stressRate() {
+    const n = S.tasks.length;
+    let rate = 0.3 + 0.11 * n + 0.03 * n * n;
+    for (const t of S.tasks) { const age = S.t - t.born; if (age > 35) rate += 0.08 + Math.min(0.45, (age - 35) / 60 * 0.2); }
+    return rate;
+  }
   function updateStress(dt) {
     const mult = S.day === 1 ? 1 : 1.25;
-    let rate = 0.32 + 0.16 * S.tasks.length;
-    for (const t of S.tasks) if (S.t - t.born > 45) rate += 0.1;
-    if (dad.moving) rate += 0.06;
+    let rate = stressRate();
+    if (dad.moving) rate += 0.08;
     let near = 0; const d = tileNow(dad);
     for (const n of npcs) { const s = tileNow(n); if (Math.hypot(s.x - d.x, s.y - d.y) < 2.6) near++; }
-    rate += Math.min(3, near) * 0.22;
-    rate += Math.min(3, chickens.filter(isIndoor).length) * 0.28;   // chooks in the house
-    if (S.mode === 'relax') rate = -3.2; else if (S.mode === 'hide') rate = -6.5; else if (!dad.moving && S.mode === 'play') rate -= 0.35;
+    rate += Math.min(3, near) * 0.25;
+    rate += Math.min(3, chickens.filter(isIndoor).length) * 0.3;   // chooks in the house
+    if (S.mode === 'relax') rate = -3.2; else if (S.mode === 'hide') rate = -6.5; else if (!S.tasks.length && !dad.moving) rate = -0.5;
     S.stress = Math.max(0, Math.min(100, S.stress + rate * (rate > 0 ? mult : 1) * dt));
     if (S.stress >= 100 && !S.over) endRun(false);
   }
@@ -280,7 +303,7 @@
   ];
   function chaos(dt) {
     S.evT -= dt; if (S.evT > 0 || S.mode === 'hide' || S.mode === 'mini') return;
-    S.evT = rnd(22, 38) / (S.day === 1 ? 1 : 1.5);
+    S.evT = rnd(16, 28) / ((S.day === 1 ? 1 : 1.4) * (1 + 0.12 * S.tasks.length));
     const inside = chickens.filter(isIndoor);
     if (inside.length && Math.random() < 0.6) { say(pick(inside), 'BAWK BAWK BAWK!', 2.4); S.stress = Math.min(100, S.stress + 6 * 0.8); return; }
     const [who, msg, v] = pick(EVENTS); if (who) say(who, msg, 2.6); else say(dad, msg, 2.8, 'think');
@@ -297,71 +320,90 @@
   }
   window.addEventListener('resize', resize); window.addEventListener('orientationchange', () => setTimeout(resize, 200));
 
-  function wallSegments(x0, y0, x1, y1) {
-    const segs = [];
-    for (let y = y0; y <= y1; y++) for (let x = x0; x <= x1; x++) {
-      if (x > 0 && Nav.roomAt[y][x] && Nav.roomAt[y][x - 1]) {
-        const a = Nav.roomAt[y][x - 1], b = Nav.roomAt[y][x];
-        if (a !== b && !Nav.edgeOpen(x - 1, y, x, y, false)) segs.push({ o: 'v', x, y, a, b });
-      }
-      if (y > 0 && Nav.roomAt[y][x] && Nav.roomAt[y - 1][x]) {
-        const a = Nav.roomAt[y - 1][x], b = Nav.roomAt[y][x];
-        if (a !== b && !Nav.edgeOpen(x, y - 1, x, y, false)) segs.push({ o: 'h', x, y, a, b });
-      }
+  // Walls sit on the grid lines between rooms: a light cap 6px thick with a dark outline, a front face on the south side, and
+  // cap squares at every corner so T-junctions and ends join cleanly. Fences (outdoors) are drawn as thin rails.
+  function buildWalls(x0, y0, x1, y1) {
+    const H = new Map(), V = new Map(), fences = [], key = (x, y) => x + ',' + y;
+    const consider = (ax, ay, bx, by, o, x, y) => {
+      const a = Nav.roomAt[ay][ax], b = Nav.roomAt[by][bx];
+      if (!a || !b || a === b || Nav.edgeOpen(ax, ay, bx, by, false)) return;
+      const ra = ROOMS[a], rb = ROOMS[b];
+      if ((ra.out && rb.out) || a === 'CHICKEN_RUN' || b === 'CHICKEN_RUN') { fences.push({ o, x, y }); return; }
+      (o === 'v' ? V : H).set(key(x, y), rb.wall || ra.wall || 't_wall');
+    };
+    for (let y = Math.max(0, y0); y <= Math.min(MAPH - 1, y1 + 1); y++) for (let x = Math.max(0, x0); x <= Math.min(MAPW - 1, x1 + 1); x++) {
+      if (x > 0 && y < MAPH && x <= x1 + 1) consider(x - 1, y, x, y, 'v', x, y);
+      if (y > 0) consider(x, y - 1, x, y, 'h', x, y);
     }
-    return segs;
+    return { H, V, fences, key };
   }
   function drawTile(k, x, y) { const a = Art.atlas()[k]; ctx.drawImage(Art.img.world, a[0], a[1], 32, 32, x * T, y * T, T, T); }
+  function drawWalls(w) {
+    const A = Art.atlas(), { H, V } = w, corners = new Map();
+    const addCorner = (cx, cy, wk) => { const k = cx + ',' + cy; if (!corners.has(k)) corners.set(k, { x: cx, y: cy, wk }); };
+    for (const [k, wk] of H) { const [x, y] = k.split(',').map(Number); addCorner(x, y, wk); addCorner(x + 1, y, wk); }
+    for (const [k, wk] of V) { const [x, y] = k.split(',').map(Number); addCorner(x, y, wk); addCorner(x, y + 1, wk); }
+    const face = (x, y, wd, wk) => {
+      const a = A[wk] || A.t_wall;
+      ctx.drawImage(Art.img.world, a[0] + 1, a[1] + 1, 30, 11, x, y, wd, 11);
+      ctx.fillStyle = 'rgba(0,0,0,.26)'; ctx.fillRect(x, y + 11, wd, 3);
+      ctx.fillStyle = 'rgba(0,0,0,.35)'; ctx.fillRect(x, y + 10, wd, 1);
+    };
+    // 1. front faces (south side of horizontal walls, and under any corner where no wall carries on southward)
+    for (const [k, wk] of H) { const [x, y] = k.split(',').map(Number); face(x * T, y * T + 4, T, wk); }
+    for (const c of corners.values()) if (!V.has(c.x + ',' + c.y)) face(c.x * T - 4, c.y * T + 4, 8, c.wk);
+    // 2. caps: dark outline pass, then the light top on top of it
+    ctx.fillStyle = '#2c2434';
+    for (const k of H.keys()) { const [x, y] = k.split(',').map(Number); ctx.fillRect(x * T, y * T - 4, T, 8); }
+    for (const k of V.keys()) { const [x, y] = k.split(',').map(Number); ctx.fillRect(x * T - 4, y * T, 8, T); }
+    for (const c of corners.values()) ctx.fillRect(c.x * T - 4, c.y * T - 4, 8, 8);
+    ctx.fillStyle = '#ece7f1';
+    for (const k of H.keys()) { const [x, y] = k.split(',').map(Number); ctx.fillRect(x * T, y * T - 2, T, 4); }
+    for (const k of V.keys()) { const [x, y] = k.split(',').map(Number); ctx.fillRect(x * T - 2, y * T, 4, T); }
+    for (const c of corners.values()) ctx.fillRect(c.x * T - 2, c.y * T - 2, 4, 4);
+    // 3. fences
+    for (const f of w.fences) {
+      ctx.fillStyle = '#6b4a2b';
+      if (f.o === 'v') { ctx.fillRect(f.x * T - 2, f.y * T, 4, T); ctx.fillStyle = '#a47a48'; ctx.fillRect(f.x * T - 1, f.y * T, 1, T); ctx.fillStyle = '#4a321c'; ctx.fillRect(f.x * T - 3, f.y * T, 6, 3); }
+      else { ctx.fillRect(f.x * T, f.y * T - 2, T, 4); ctx.fillStyle = '#a47a48'; ctx.fillRect(f.x * T, f.y * T - 2, T, 1); ctx.fillStyle = '#4a321c'; ctx.fillRect(f.x * T, f.y * T - 3, 3, 6); }
+    }
+  }
   function drawWorld(vx0, vy0, vx1, vy1, t) {
     const x0 = Math.max(0, tileOf(vx0)), y0 = Math.max(0, tileOf(vy0)), x1 = Math.min(MAPW - 1, tileOf(vx1)), y1 = Math.min(MAPH - 1, tileOf(vy1));
     for (let y = y0; y <= y1; y++) for (let x = x0; x <= x1; x++) { const r = Nav.roomAt[y][x]; if (r) drawTile(ROOMS[r].floor, x, y); }
     ctx.fillStyle = 'rgba(0,0,0,.10)';
     for (let y = y0; y <= y1; y++) for (let x = x0; x <= x1; x++) { const r = Nav.roomAt[y][x]; if (r && !ROOMS[r].out && ((x + y) & 1)) ctx.fillRect(x * T, y * T, T, T); }
     for (const f of furn) if (f.floor && f.x < vx1 && f.x + f.w > vx0 && f.y < vy1 && f.y + f.h > vy0) Art.sprite(ctx, f.k, f.x, f.y);
-    // walls & fences
-    const A = Art.atlas();
-    for (const s of wallSegments(x0, y0, x1, y1)) {
-      const ra = ROOMS[s.a], rb = ROOMS[s.b], fence = (ra.out && rb.out) || s.a === 'CHICKEN_RUN' || s.b === 'CHICKEN_RUN';
-      if (fence) {
-        ctx.fillStyle = '#6b4a2b'; if (s.o === 'v') { ctx.fillRect(s.x * T - 2, s.y * T, 4, T); ctx.fillStyle = '#a47a48'; ctx.fillRect(s.x * T - 1, s.y * T, 1, T); } else { ctx.fillRect(s.x * T, s.y * T - 2, T, 4); ctx.fillStyle = '#a47a48'; ctx.fillRect(s.x * T, s.y * T - 2, T, 1); }
-        continue;
-      }
-      const wk = (rb.wall || ra.wall || 't_wall'), a = A[wk];
-      if (s.o === 'v') {
-        ctx.drawImage(Art.img.world, a[0] + 8, a[1], 8, 32, s.x * T - 4, s.y * T, 8, T);
-        ctx.fillStyle = '#2c2434'; ctx.fillRect(s.x * T - 5, s.y * T, 1, T); ctx.fillRect(s.x * T + 4, s.y * T, 1, T);
-      } else {
-        ctx.fillStyle = '#2c2434'; ctx.fillRect(s.x * T, s.y * T - 6, T, 6);
-        ctx.drawImage(Art.img.world, a[0], a[1], 32, 14, s.x * T, s.y * T, T, 14);
-        ctx.fillStyle = 'rgba(0,0,0,.28)'; ctx.fillRect(s.x * T, s.y * T + 14, T, 3);
-      }
-    }
+    drawWalls(buildWalls(x0, y0, x1, y1));
     for (const d of DOORS) {
-      const dx = d.o === 'v' ? d.at * T : d.i * T, dy = d.o === 'v' ? d.i * T : d.at * T;
-      if (dx < vx0 - T || dx > vx1 + T || dy < vy0 - T || dy > vy1 + T) continue;
+      const dx = d.o === 'v' ? d.at * T : d.i * T, dy = d.o === 'v' ? d.i * T : d.at * T, ex = d.o === 'v' ? dx : dx + d.w * T, ey = d.o === 'v' ? dy + d.w * T : dy;
+      if (ex < vx0 - T || dx > vx1 + T || ey < vy0 - T || dy > vy1 + T) continue;
       d.t += ((d.open ? 1 : 0) - d.t) * Math.min(1, dtNow * 12);
       drawDoor(d, dx, dy);
     }
   }
   let dtNow = 0.016;
-  // Doors and gates are drawn procedurally: a panel that shrinks away as the leaf swings open.
+  // Doors and gates are drawn procedurally: a panel that shrinks away as the leaf swings open. Wide doors are double doors.
   function drawDoor(d, x, y) {
-    const k = d.t, gate = !!d.gate, wood = gate ? '#b8894f' : '#8a5a34', dark = gate ? '#5c3d1f' : '#2c2434', hi = gate ? '#d6aa6a' : '#a8744a';
+    const k = d.t, gate = !!d.gate, wood = gate ? '#b8894f' : '#8a5a34', dark = gate ? '#5c3d1f' : '#2c2434', hi = gate ? '#d6aa6a' : '#a8744a', len = d.w * T;
+    const knob = (kx, ky) => { ctx.fillStyle = '#f0d27a'; ctx.fillRect(kx, ky, 3, 3); };
+    if (gate) { ctx.fillStyle = dark; if (d.o === 'v') { ctx.fillRect(x - 3, y - 1, 6, 5); ctx.fillRect(x - 3, y + len - 4, 6, 5); } else { ctx.fillRect(x - 1, y - 3, 5, 6); ctx.fillRect(x + len - 4, y - 3, 5, 6); } }
     if (d.o === 'v') {
-      // posts
-      ctx.fillStyle = dark; ctx.fillRect(x - 3, y, 6, 3); ctx.fillRect(x - 3, y + T - 3, 6, 3);
-      const ph = (T - 6) * (1 - k);
-      if (ph > 1) { ctx.fillStyle = dark; ctx.fillRect(x - 7, y + 2, 14, ph + 2); ctx.fillStyle = wood; ctx.fillRect(x - 6, y + 3, 12, ph); ctx.fillStyle = hi; ctx.fillRect(x - 6, y + 3, 3, ph); ctx.fillStyle = dark; ctx.fillRect(x - 1, y + 3, 1, ph); if (ph > 12) { ctx.fillStyle = '#f0d27a'; ctx.fillRect(x + 2, y + 3 + ph / 2 - 1, 3, 3); } }
-      if (k > 0.05) { const len = 22 * k; ctx.fillStyle = dark; ctx.fillRect(x, y + 1, len, 4); ctx.fillStyle = wood; ctx.fillRect(x, y + 2, len - 1, 2); }
-    } else {
-      ctx.fillStyle = dark; ctx.fillRect(x, y - 6, 3, 20); ctx.fillRect(x + T - 3, y - 6, 3, 20);
-      const pw = (T - 6) * (1 - k);
-      if (pw > 1) {
-        ctx.fillStyle = dark; ctx.fillRect(x + 3, y - 5, pw, 18); ctx.fillStyle = wood; ctx.fillRect(x + 3, y - 4, pw, 16); ctx.fillStyle = hi; ctx.fillRect(x + 3, y - 4, pw, 2);
-        ctx.fillStyle = dark; if (gate) { ctx.fillRect(x + 3, y + 1, pw, 1); ctx.fillRect(x + 3, y + 6, pw, 1); } else { ctx.fillRect(x + 3 + pw / 2, y - 3, 1, 14); }
-        if (pw > 12) { ctx.fillStyle = '#f0d27a'; ctx.fillRect(x + 3 + pw - 5, y + 4, 2, 2); }
+      const ph = (len - 8) * (1 - k);
+      if (ph > 1) {
+        ctx.fillStyle = dark; ctx.fillRect(x - 6, y + 3, 12, ph + 2); ctx.fillStyle = wood; ctx.fillRect(x - 5, y + 4, 10, ph); ctx.fillStyle = hi; ctx.fillRect(x - 5, y + 4, 3, ph);
+        ctx.fillStyle = dark; if (d.w > 1) ctx.fillRect(x - 1, y + 4 + ph / 2, 3, 1); if (gate) { ctx.fillRect(x - 1, y + 4, 1, ph); }
+        if (ph > 14) { knob(x + 2, y + 4 + ph / 2 - 6); if (d.w > 1) knob(x + 2, y + 4 + ph / 2 + 4); }
       }
-      if (k > 0.05) { ctx.fillStyle = dark; ctx.fillRect(x + 3, y - 5, 4, 3 + 14 * k); ctx.fillStyle = wood; ctx.fillRect(x + 4, y - 4, 2, 2 + 14 * k); }
+      if (k > 0.05) { const l = Math.min(len / 2 - 3, 28) * k; ctx.fillStyle = dark; ctx.fillRect(x, y + 2, l, 5); ctx.fillRect(x, y + len - 7, l, 5); ctx.fillStyle = wood; ctx.fillRect(x, y + 3, l - 1, 3); ctx.fillRect(x, y + len - 6, l - 1, 3); }
+    } else {
+      const pw = (len - 8) * (1 - k);
+      if (pw > 1) {
+        ctx.fillStyle = dark; ctx.fillRect(x + 3, y - 5, pw + 2, 22); ctx.fillStyle = wood; ctx.fillRect(x + 4, y - 4, pw, 20); ctx.fillStyle = hi; ctx.fillRect(x + 4, y - 4, pw, 3);
+        ctx.fillStyle = dark; if (gate) { ctx.fillRect(x + 4, y + 2, pw, 1); ctx.fillRect(x + 4, y + 9, pw, 1); } if (d.w > 1) ctx.fillRect(x + 4 + pw / 2, y - 3, 1, 18);
+        if (pw > 14) { knob(x + 4 + pw / 2 - 6, y + 5); if (d.w > 1) knob(x + 4 + pw / 2 + 3, y + 5); }
+      }
+      if (k > 0.05) { const l = Math.min(len / 2 - 3, 22) * k; ctx.fillStyle = dark; ctx.fillRect(x + 3, y - 5, 5, l + 3); ctx.fillRect(x + len - 8, y - 5, 5, l + 3); ctx.fillStyle = wood; ctx.fillRect(x + 4, y - 4, 3, l + 1); ctx.fillRect(x + len - 7, y - 4, 3, l + 1); }
     }
   }
 
@@ -378,7 +420,7 @@
     // y-sorted sprites
     const q = [];
     for (const f of furn) if (!f.floor) q.push({ y: f.y + f.h, d: () => Art.sprite(ctx, f.k, f.x, f.y) });
-    for (const e of S.ents) q.push({ y: centre(e.ty) + 4, d: () => { Art.sprite(ctx, e.k, centre(e.tx) - 7, centre(e.ty) - 6); } });
+    for (const e of S.ents) if (e.k) q.push({ y: centre(e.ty) + 4, d: () => { Art.sprite(ctx, e.k, centre(e.tx) - 7, centre(e.ty) - 6); } });
     for (const c of chickens) q.push({ y: c.y, d: () => Art.animal(ctx, 'chicken', c.x, c.y, c.dir, c.moving, c.anim) });
     for (const n of npcs) q.push({ y: n.y, d: () => n.kind === 'animal' ? Art.animal(ctx, n.name, n.x, n.y, n.dir, n.moving, n.anim) : Art.person(ctx, n.name, n.x, n.y, n.dir, n.moving, n.anim) });
     q.push({ y: dad.y, d: () => {
@@ -390,7 +432,7 @@
     ctx.textAlign = 'center'; ctx.font = '20px system-ui';
     for (const t of S.tasks) {
       let p = null;
-      if (t.type === 'toys' || t.type === 'poop') { const e = S.ents.find(e => e.task === t.type); if (e) p = { x: centre(e.tx), y: centre(e.ty) - 14 }; }
+      if (t.type === 'toys' || t.type === 'poop' || t.type === 'eggs') { const e = S.ents.find(e => e.task === t.type); if (e) p = { x: centre(e.tx), y: centre(e.ty) - 14 }; }
       else { const f = byId(t.spot); if (f) p = { x: f.x + f.w / 2, y: f.y - 6 }; }
       if (p) { const bob = Math.sin(S.t * 4 + t.born) * 3; ctx.fillStyle = 'rgba(20,14,28,.75)'; ctx.beginPath(); ctx.arc(p.x, p.y + bob - 7, 14, 0, 7); ctx.fill(); ctx.fillStyle = '#fff'; ctx.fillText(t.icon, p.x, p.y + bob); }
     }
@@ -424,27 +466,46 @@
     const placed = [], toScr = (wx, wy) => ({ x: (wx - Math.round(camX)) * Z, y: (wy - Math.round(camY)) * Z });
     ctx.font = '600 13px system-ui, -apple-system, sans-serif'; ctx.textBaseline = 'alphabetic';
     for (let i = bubbles.length - 1; i >= 0; i--) { bubbles[i].t += dt; if (bubbles[i].t > bubbles[i].life) bubbles.splice(i, 1); }
-    const topMargin = 58;
+    const topMargin = 64;
     for (const b of bubbles) {
-      let who = b.who, kind = b.kind, text = b.text;
-      let p = toScr(who.x, who.y - headH(who) * 1);
-      const off = p.x < 4 || p.x > W - 4 || p.y < topMargin - 20 || p.y > H;
-      if (off) { who = dad; kind = 'think'; text = (NAMES[b.who.name] || '') + ': ' + b.text; p = toScr(dad.x, dad.y - headH(dad)); }
-      const maxW = Math.min(220, W * 0.55), lines = wrapText(text, maxW), lw = Math.max(...lines.map(l => ctx.measureText(l).width)), lh = 16, pad = 8;
+      const who = b.who, think = b.kind === 'think';
+      let p = toScr(who.x, who.y - headH(who));
+      const inView = p.x > 6 && p.x < W - 6 && p.y > topMargin && p.y < H - 6;
+      // a speaker who is off screen keeps their own bubble, pinned to the screen edge with an arrow pointing their way
+      const text = inView ? b.text : (NAMES[who.name] || '') + ': ' + b.text;
+      const maxW = Math.min(220, W * 0.5), lines = wrapText(text, maxW), lw = Math.max(...lines.map(l => ctx.measureText(l).width)), lh = 16, pad = 8;
       const bw = lw + pad * 2, bh = lines.length * lh + pad * 2 - 2, tail = 8;
-      let bx = Math.max(4, Math.min(W - bw - 4, p.x - bw / 2)), by = Math.max(topMargin, p.y - tail - bh - 2);
-      for (let k = 0; k < 4; k++) { const hit = placed.find(r => bx < r.x + r.w + 2 && bx + bw + 2 > r.x && by < r.y + r.h + 2 && by + bh + 2 > r.y); if (!hit) break; by = hit.y - bh - 4; }
+      let bx, by, arrow = null;
+      if (inView) { bx = Math.max(4, Math.min(W - bw - 4, p.x - bw / 2)); by = Math.max(topMargin, p.y - tail - bh - 2); }
+      else {
+        const cx = Math.max(bw / 2 + 12, Math.min(W - bw / 2 - 180, p.x)), cy = Math.max(topMargin + bh / 2 + 4, Math.min(H - bh / 2 - 14, p.y));
+        bx = cx - bw / 2; by = cy - bh / 2;
+        const dx = p.x - cx, dy = p.y - cy;
+        arrow = Math.abs(dx) / (bw / 2 + 1) > Math.abs(dy) / (bh / 2 + 1) ? (dx > 0 ? 'r' : 'l') : (dy > 0 ? 'd' : 'u');
+      }
+      for (let k = 0; k < 4; k++) { const hit = placed.find(r => bx < r.x + r.w + 2 && bx + bw + 2 > r.x && by < r.y + r.h + 2 && by + bh + 2 > r.y); if (!hit) break; by = inView ? hit.y - bh - 4 : hit.y + hit.h + 4; }
+      if (bx < 178 && by < 84) by = 84;   // stay clear of the stress panel
       by = Math.max(topMargin - 40, by); placed.push({ x: bx, y: by, w: bw, h: bh });
       const a = Math.min(1, b.t / 0.12, (b.life - b.t) / 0.35); ctx.globalAlpha = Math.max(0, a);
-      const think = kind === 'think';
       ctx.fillStyle = think ? 'rgba(226,236,255,.96)' : 'rgba(255,255,255,.97)'; ctx.strokeStyle = think ? '#6d7fa8' : '#2c2434'; ctx.lineWidth = 1.5;
       ctx.beginPath(); ctx.roundRect(bx, by, bw, bh, think ? 12 : 8); ctx.fill(); ctx.stroke();
-      const tx = Math.max(bx + 10, Math.min(bx + bw - 10, p.x));
-      if (think) {
-        ctx.beginPath(); ctx.arc(tx, by + bh + 4, 3.5, 0, 7); ctx.fill(); ctx.stroke(); ctx.beginPath(); ctx.arc(tx + (p.x > tx ? 2 : -2), by + bh + 10, 2, 0, 7); ctx.fill(); ctx.stroke();
+      if (arrow) {
+        const mx = bx + bw / 2, my = by + bh / 2; ctx.beginPath();
+        if (arrow === 'r') { ctx.moveTo(bx + bw - .5, my - 6); ctx.lineTo(bx + bw + 9, my); ctx.lineTo(bx + bw - .5, my + 6); }
+        else if (arrow === 'l') { ctx.moveTo(bx + .5, my - 6); ctx.lineTo(bx - 9, my); ctx.lineTo(bx + .5, my + 6); }
+        else if (arrow === 'd') { ctx.moveTo(mx - 6, by + bh - .5); ctx.lineTo(mx, by + bh + 9); ctx.lineTo(mx + 6, by + bh - .5); }
+        else { ctx.moveTo(mx - 6, by + .5); ctx.lineTo(mx, by - 9); ctx.lineTo(mx + 6, by + .5); }
+        ctx.closePath(); ctx.fill(); ctx.stroke();
+        ctx.fillStyle = think ? 'rgba(226,236,255,.96)' : 'rgba(255,255,255,.97)';
+        if (arrow === 'r') ctx.fillRect(bx + bw - 2, my - 5, 3, 10); else if (arrow === 'l') ctx.fillRect(bx - 1, my - 5, 3, 10); else if (arrow === 'd') ctx.fillRect(mx - 5, by + bh - 2, 10, 3); else ctx.fillRect(mx - 5, by - 1, 10, 3);
       } else {
-        ctx.beginPath(); ctx.moveTo(tx - 5, by + bh - 0.5); ctx.lineTo(tx, by + bh + tail); ctx.lineTo(tx + 5, by + bh - 0.5); ctx.closePath(); ctx.fill(); ctx.stroke();
-        ctx.fillStyle = 'rgba(255,255,255,.97)'; ctx.fillRect(tx - 4, by + bh - 2, 8, 3);
+        const tx = Math.max(bx + 10, Math.min(bx + bw - 10, p.x));
+        if (think) {
+          ctx.beginPath(); ctx.arc(tx, by + bh + 4, 3.5, 0, 7); ctx.fill(); ctx.stroke(); ctx.beginPath(); ctx.arc(tx + (p.x > tx ? 2 : -2), by + bh + 10, 2, 0, 7); ctx.fill(); ctx.stroke();
+        } else {
+          ctx.beginPath(); ctx.moveTo(tx - 5, by + bh - 0.5); ctx.lineTo(tx, by + bh + tail); ctx.lineTo(tx + 5, by + bh - 0.5); ctx.closePath(); ctx.fill(); ctx.stroke();
+          ctx.fillStyle = 'rgba(255,255,255,.97)'; ctx.fillRect(tx - 4, by + bh - 2, 8, 3);
+        }
       }
       ctx.fillStyle = '#2c2434'; ctx.textAlign = 'left';
       lines.forEach((l, i) => ctx.fillText(l, bx + pad, by + pad + 11 + i * lh));
@@ -483,7 +544,7 @@
   function startDay(day) {
     S.day = day; S.t = 0; S.tn = 0; S.mode = 'play'; S.over = false; S.paused = false; S.tasks = []; S.ents = []; S.hideCD = 0; S.doneCount = 0; S.failCount = 0;
     S.stress = day === 1 ? 18 : Math.min(40, S.stress * 0.5 + 10); S.first = true;
-    S.timeline = TIMELINES[day].slice(); S.evT = 20;
+    S.timeline = buildTimeline(day); S.evT = 20;
     bubbles.length = 0;
     const lr = ROOMS.LIVING_ROOM; const st = Nav.nearestReachable(lr.x + 6, lr.y + 13, lr.x + 6, lr.y + 13) || { x: lr.x + 6, y: lr.y + 13 };
     dad.x = centre(st.x); dad.y = centre(st.y) + 8; dad.path = []; dad.onArrive = null; dad.dir = 'down'; dad.chk = null; dad.lastDoor = null;
@@ -517,7 +578,7 @@
         if (S.mode === 'play' || S.mode === 'relax' || S.mode === 'hide') stepMover(dad, d);
         if (S.mode === 'mini') Mini.update(d);
         for (const n of npcs) updateNPC(n, d); for (const c of chickens) updateChicken(c, d);
-        if (S.mode !== 'mini') { updateStress(d); chaos(d); } else S.stress += (0.32 + 0.16 * S.tasks.length) * d * (S.day === 1 ? 1 : 1.25);
+        if (S.mode !== 'mini') { updateStress(d); chaos(d); } else S.stress += stressRate() * d * (S.day === 1 ? 1 : 1.25);
         if (S.t >= DAY_LEN && !S.over) endRun(true);
         if (((S.t * 2) | 0) !== S.tn) { S.tn = (S.t * 2) | 0; renderHUD(); }
       }
